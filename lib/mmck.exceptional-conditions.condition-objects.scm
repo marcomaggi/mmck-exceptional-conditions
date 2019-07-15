@@ -41,6 +41,7 @@
 	      <condition>-total-number-of-fields
 	      split-constructor-args
 	      zip-constructor-args)
+     (syntax: assert error)
      ;; the following are defined by R6RS
      &condition make-condition condition?
      &who make-who-condition who-condition? condition-who
@@ -438,11 +439,16 @@
   (%internal-assert (who-condition-value?     who))
   (%internal-assert (message-condition-value? message))
   (raise
-   (condition
-     (make-error)
-     ($make-who-condition who)
-     ($make-message-condition message)
-     (make-irritants-condition irritants))))
+   (if who
+       (condition
+	 (make-error)
+	 ($make-who-condition who)
+	 ($make-message-condition message)
+	 (make-irritants-condition irritants))
+     (condition
+	 (make-error)
+	 ($make-message-condition message)
+	 (make-irritants-condition irritants)))))
 
 (define (assertion-violation who message . irritants)
   ;;R6RS states that there must be an "&irritants" condition.
@@ -450,32 +456,22 @@
   (%internal-assert (who-condition-value?     who))
   (%internal-assert (message-condition-value? message))
   (raise
-   (condition
-     (make-assertion-violation)
-     ($make-who-condition who)
-     ($make-message-condition message)
-     (make-irritants-condition irritants))))
+   (if who
+       (condition
+	 (make-assertion-violation)
+	 ($make-who-condition who)
+	 ($make-message-condition message)
+	 (make-irritants-condition irritants))
+     (condition
+	 (make-assertion-violation)
+	 ($make-message-condition message)
+	 (make-irritants-condition irritants)))))
 
 (define-syntax assert
   (syntax-rules ()
     ((_ ?expr)
-     (unless ?expr
-       (error 'assert "failed assertion" (quote ?expr))))))
-
-;;; --------------------------------------------------------------------
-
-(define-syntax %expand-assert*
-  (ir-macro-transformer
-    (lambda (input-form inject compare)
-      (let ((?expr (cadr input-form)))
-	(let ((%__who__ (inject '__who__)))
-	  `(unless ,?expr
-	     (error ,%__who__ "failed assertion" (quote ,?expr))))))))
-
-(define-syntax assert*
-  (syntax-rules ()
-    ((_ ?expr)
-     (%expand-assert* ?expr))
+     (or ?expr
+	 (error 'assert "failed assertion" (quote ?expr))))
     ))
 
 

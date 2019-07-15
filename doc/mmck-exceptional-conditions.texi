@@ -146,6 +146,7 @@ included in the section entitled ``@gnu{} Free Documentation License''.
 * version::                     Version functions.
 * exceptions::                  Raising exceptional-conditions.
 * conditions::                  Exceptional-condition objects.
+* errors::                      Raising errors.
 
 Appendices
 
@@ -709,6 +710,77 @@ This condition type could be defined by:
 @end example
 
 This type describes unbound identifiers in the program.
+@end deffn
+
+@c page
+@node errors
+@chapter Raising errors
+
+
+@deffn Procedure error @var{who} @var{message} @vari{irritant} @dots{}
+@deffnx Procedure assertion-violation @var{who} @var{message} @vari{irritant} @dots{}
+@var{who} must be a string or a symbol or @false{}.  @var{message} must be a string.  The
+@var{irritant}s are arbitrary objects.
+
+These procedures raise a non--continuable exception.  The @func{error} procedure should be called
+when an error has occurred, typically caused by something that has gone wrong in the interaction of
+the program with the external world or the user.  The @func{assertion-violation} procedure should be
+called when an invalid call to a procedure was made, either passing an invalid number of arguments,
+or passing an argument that it is not specified to handle.
+
+The @var{who} argument should describe the procedure or operation that detected the exception.  The
+@var{message} argument should describe the exceptional situation.  The @var{irritant}s should be the
+arguments to the operation that detected the violation.
+
+The condition object provided with the exception has the following condition types:
+
+@itemize
+@item
+If @var{who} is not @false{}, the condition has condition type @condition{who}, with @var{who} as
+the value of its field.  In that case, @var{who} should be the name of the procedure or entity that
+detected the exception.  If it is @false{}, the condition does not have condition type
+@condition{who}.
+
+@item
+The condition has condition type @condition{message}, with @var{message} as
+the value of its field.
+
+@item
+The condition has condition type @condition{irritants}, and its field has as
+its value a list of the @var{irritant}s.
+@end itemize
+
+Moreover, the condition created by @func{error} has condition type
+@condition{error}, and the condition created by @func{assertion-violation}
+has condition type @condition{assertion}.
+
+@example
+(define (fac n)
+  (if (not (integer-valued? n))
+      (assertion-violation
+       'fac "non-integral argument" n))
+  (if (negative? n)
+      (assertion-violation
+       'fac "negative argument" n))
+  (letrec
+    ((loop (lambda (n r)
+             (if (zero? n)
+                 r
+                 (loop (- n 1) (* r n))))))
+      (loop n 1)))
+
+(fac 5)         @result{} 120
+(fac 4.5)       @error{} exception &assertion
+(fac -3)        @error{} exception &assertion
+@end example
+@end deffn
+
+
+@deffn Syntax assert @meta{expression}
+An @func{assert} form is evaluated by evaluating @meta{expression}.  If @meta{expression} returns a
+true value, that value is returned from the @func{assert} expression.  If @meta{expression} returns
+@false{}, an exception with condition types @condition{assertion} and @condition{message} is raised.
+The message provided in the condition object is implementation--dependent.
 @end deffn
 
 @c page
