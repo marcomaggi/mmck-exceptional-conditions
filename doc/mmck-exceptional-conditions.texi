@@ -144,6 +144,8 @@ included in the section entitled ``@gnu{} Free Documentation License''.
 @menu
 * overview::                    Overview of the package.
 * version::                     Version functions.
+* exceptions::                  Raising exceptional-conditions.
+* conditions::                  Exceptional-condition objects.
 
 Appendices
 
@@ -255,6 +257,459 @@ Return a string representing the package's semantic version.  As example, if the
 version is @samp{1.2.3-devel.0+x86-64}: the package version is the string
 @samp{"v1.2.3-devel.0+x86-64"}, notice the leading character @samp{v}.
 @end defun
+
+@c page
+@node exceptions
+@chapter Raising exceptional--conditions
+
+
+@cindex Handling exceptional--conditions
+@cindex Raising exceptional--conditions
+@cindex Exceptional--conditions, raising
+@cindex Exceptional--conditions, handling
+
+@c page
+@node conditions
+@chapter Exceptional--condition object
+
+
+@cindex Exceptional--condition objects
+@cindex Exceptional--condition object--types
+@cindex Condition object--types
+
+
+This section describes an @api{} for creating and inspecting condition types and values.  A
+condition value encapsulates information about an exceptional situation; the @api{} also defines a
+number of basic condition types.  This @api{} and this documentation section are derived from the
+ones defined by @rnrs{6}, but the underlying condition objects representation is the one built--in
+into @chicken{} and defined by the module @library{chicken condition}.
+
+Scheme conditions provide two mechanisms to enable communication about an exceptional situation:
+subtyping among condition types allows handling code to determine the general nature of an exception
+even though it does not anticipate its exact nature, and compound conditions allow an exceptional
+situation to be described in multiple ways.
+
+@menu
+* conditions objects::          Condition objects.
+* conditions types::            Predefined condition types.
+@end menu
+
+@c page
+@node conditions objects
+@section Condition objects
+
+
+Conceptually, there are two different kinds of condition objects: @emph{simple conditions} and
+@emph{compound conditions}.  An object that is either a simple condition or a compound condition is
+simply a @emph{condition}.  Compound conditions form a type disjoint from the base types.  A simple
+condition describes a single aspect of an exceptional situation.  A compound condition represents
+multiple aspects of an exceptional situation as a list of simple conditions, its @emph{components}.
+Most of the operations described in this section treat a simple condition identically to a compound
+condition with itself as its own sole component.
+
+
+@deftp {Condition Kind} {&condition}
+Simple conditions are formal subtypes of the @condition{condition} kind.  The @condition{condition}
+kind has no fields.
+@end deftp
+
+
+@deffn Procedure condition @vari{condition} @dots{}
+Return a condition object with the components of the @var{condition}s as its components, in the same
+order, i.e., with the components of @vari{condition} appearing first in the same order as in
+@vari{condition}, then with the components of @varii{condition}, and so on.  The returned condition
+is compound if the total number of components is zero or greater than one.  Otherwise, it may be
+compound or simple.
+@end deffn
+
+
+@deffn Procedure simple-conditions @var{condition}
+The @func{simple-conditions} procedure returns a list of the components of @var{condition}, in the
+same order as they appeared in the construction of @var{condition}.  The returned list is immutable.
+If the returned list is modified, the effect on @var{condition} is unspecified.
+
+@quotation
+@strong{NOTE} Because @func{condition} decomposes its arguments into simple conditions,
+@func{simple-conditions} always returns a ``flattened'' list of simple conditions.
+@end quotation
+@end deffn
+
+
+@deffn Procedure {condition?} @var{obj}
+Return @true{} if @var{obj} is a (simple or compound) condition, otherwise return @false{}.
+@end deffn
+
+
+@deffn Syntax define-condition-type @qvar{condition-kind} @qvar{supertype} @qvar{constructor} @qvar{predicate} @qvari{field-spec} @dots{}
+@qvar{condition-kind}, @qvar{supertype}, @qvar{constructor}, and @qvar{predicate} must all be
+identifiers.  Each @qvar{field-spec} must be of the form
+
+@example
+(@qvar{field} @qvar{accessor})
+@end example
+
+@noindent
+where both @qvar{field} and @qvar{accessor} must be identifiers.
+
+The @func{define-condition-type} form expands into a group of definitions for the constructor,
+predicate and field accessors for a new condition kind @qvar{condition-kind}.  The identifiers will
+be bound as follows:
+
+@itemize
+@item
+@qvar{constructor} is bound to a default constructor for the kind: it accepts one argument for each
+of the record kind's complete set of fields (including parent kinds, with the fields of the parent
+coming before those of the extension in the arguments) and returns a condition object initialised to
+those arguments.  The returned object is a compound that contains the kind @qvar{condition-kind},
+the kind @qvar{supertype} and all the parent kinds of @qvar{supertype}.
+
+@item
+@qvar{predicate} is bound to a predicate that identifies conditions of type @qvar{condition-kind} or
+any of its subtypes.
+
+@item
+Each @qvar{accessor} is bound to a procedure that extracts the corresponding field from a condition
+of type @qvar{condition-kind}.  The fields of a condition kind are its properties as defined by the
+module @library{chicken condition}.
+@end itemize
+@end deffn
+
+
+Some usage examples:
+
+@lisp
+(define-condition-type &c &condition
+  make-c c?
+  (x c-x))
+
+(define-condition-type &c1 &c
+  make-c1 c1?
+  (a c1-a))
+
+(define-condition-type &c2 &c
+  make-c2 c2?
+  (b c2-b))
+@end lisp
+
+@lisp
+(define v1 (make-c1 "V1" "a1"))
+
+(c? v1)        @result{} #t
+(c1? v1)       @result{} #t
+(c2? v1)       @result{} #f
+(c-x v1)       @result{} "V1"
+(c1-a v1)      @result{} "a1"
+@end lisp
+
+@lisp
+(define v2 (make-c2 "V2" "b2"))
+
+(c? v2)        @result{} #t
+(c1? v2)       @result{} #f
+(c2? v2)       @result{} #t
+(c-x v2)       @result{} "V2"
+(c2-b v2)      @result{} "b2"
+@end lisp
+
+@lisp
+(define v3 (condition
+             (make-c1 "V3/1" "a3")
+             (make-c2 "V3/2" "b3")))
+
+(c? v3)        @result{} #t
+(c1? v3)       @result{} #t
+(c2? v3)       @result{} #t
+(c-x v3)       @result{} "V3/1"
+(c1-a v3)      @result{} "a3"
+(c2-b v3)      @result{} "b3"
+@end lisp
+
+@lisp
+(define v4 (condition v1 v2))
+
+(c? v4)        @result{} #t
+(c1? v4)       @result{} #t
+(c2? v4)       @result{} #t
+(c-x v4)       @result{} "V1"
+(c1-a v4)      @result{} "a1"
+(c2-b v4)      @result{} "b2"
+@end lisp
+
+@lisp
+(define v5 (condition v2 v3))
+
+(c? v5)        @result{} #t
+(c1? v5)       @result{} #t
+(c2? v5)       @result{} #t
+(c-x v5)       @result{} "V2"
+(c1-a v5)      @result{} "a3"
+(c2-b v5)      @result{} "b2"
+@end lisp
+
+@c page
+@node conditions types
+@section Predefined condition types
+
+
+Hierarchy of predefined condition types:
+
+@example
+&condition
+   |
+   +-----> &warning
+   |
+   +-----> &message
+   |       &irritants
+   |       &who
+   |
+   +-----> &serious
+              |
+              +-----> &error
+              |
+              +-----> &violation
+                         |
+                         +-----> &assertion
+                         |
+                         +-----> &non-continuable
+                         |
+                         +-----> &implementation-restriction
+                         |
+                         +-----> &lexical
+                         |
+                         +-----> &syntax
+                         |
+                          -----> &undefined
+@end example
+
+
+@tindex &message
+@deffn {Condition Kind} {&message}
+@deffnx Procedure make-message-condition @var{message}
+@deffnx Procedure message-condition? @var{obj}
+@deffnx Procedure condition-message @var{condition}
+This condition type could be defined by:
+
+@example
+(define-condition-type &message &condition
+  make-message-condition message-condition?
+  (message condition-message))
+@end example
+
+It carries a message further describing the nature of the condition to
+humans.
+@end deffn
+
+
+@tindex &warning
+@deffn {Condition Kind} {&warning}
+@deffnx Procedure make-warning
+@deffnx Procedure warning? @var{obj}
+This condition type could be defined by:
+
+@example
+(define-condition-type &warning &condition
+  make-warning warning?)
+@end example
+
+This type describes conditions that do not, in principle, prohibit
+immediate continued execution of the program, but may interfere with the
+program's execution later.
+@end deffn
+
+
+@tindex &serious
+@deffn {Condition Kind} {&serious}
+@deffnx Procedure make-serious-condition
+@deffnx Procedure serious-condition? @var{obj}
+This condition type could be defined by:
+
+@example
+(define-condition-type &serious &condition
+  make-serious-condition serious-condition?)
+@end example
+
+This type describes conditions serious enough that they cannot safely be
+ignored.  This condition type is primarily intended as a supertype of
+other condition types.
+@end deffn
+
+
+@tindex &error
+@deffn {Condition Kind} {&error}
+@deffnx Procedure make-error
+@deffnx Procedure error? @var{obj}
+This condition type could be defined by:
+
+@example
+(define-condition-type &error &serious
+  make-error error?)
+@end example
+
+This type describes errors, typically caused by something that has gone
+wrong in the interaction of the program with the external world or the
+user.
+@end deffn
+
+
+@tindex &violation
+@deffn {Condition Kind} {&violation}
+@deffnx Procedure make-violation
+@deffnx Procedure violation? @var{obj}
+This condition type could be defined by:
+
+@example
+(define-condition-type &violation &serious
+  make-violation violation?)
+@end example
+
+This type describes violations of the language standard or a library
+standard, typically caused by a programming error.
+@end deffn
+
+
+@tindex &assertion
+@deffn {Condition Kind} {&assertion}
+@deffnx Procedure make-assertion-violation
+@deffnx Procedure assertion-violation? @var{obj}
+This condition type could be defined by:
+
+@example
+(define-condition-type &assertion &violation
+  make-assertion-violation assertion-violation?)
+@end example
+
+This type describes an invalid call to a procedure, either passing an
+invalid number of arguments, or passing an argument of the wrong type.
+@end deffn
+
+
+@tindex &irritants
+@deffn {Condition Kind} {&irritants}
+@deffnx Procedure make-irritants-condition @var{irritants}
+@deffnx Procedure irritants-condition? @var{obj}
+@deffnx Procedure condition-irritants @var{condition}
+This condition type could be defined by:
+
+@example
+(define-condition-type &irritants &condition
+  make-irritants-condition irritants-condition?
+  (irritants condition-irritants))
+@end example
+
+@var{irritants} should be a list of objects.  This condition provides
+additional information about a condition, typically the argument list of
+a procedure that detected an exception.  Conditions of this type are
+created by the procedures @func{error} and @func{assertion-violation}.
+@end deffn
+
+
+@tindex &who
+@deffn {Condition Kind} {&who}
+@deffnx Procedure make-who-condition @var{who}
+@deffnx Procedure who-condition? @var{obj}
+@deffnx Procedure condition-who @var{condition}
+This condition type could be defined by:
+
+@example
+(define-condition-type &who &condition
+  make-who-condition who-condition?
+  (who condition-who))
+@end example
+
+@var{who} should be a symbol or string identifying the entity reporting the exception.  Conditions
+of this type are created by the @func{error} and @func{assertion-violation} procedures, and the
+@func{syntax-violation} procedure.
+@end deffn
+
+
+@tindex &non-continuable
+@deffn {Condition Kind} {&non-continuable}
+@deffnx Procedure make-non-continuable-violation
+@deffnx Procedure non-continuable-violation? @var{obj}
+This condition type could be defined by:
+
+@example
+(define-condition-type &non-continuable &violation
+  make-non-continuable-violation
+  non-continuable-violation?)
+@end example
+
+This type indicates that an exception handler invoked via @func{raise}
+has returned.
+@end deffn
+
+
+@tindex &implementation-restriction
+@deffn {Condition Kind} {&implementation-restriction}
+@deffnx Procedure make-implementation-restriction-violation
+@deffnx Procedure implementation-restriction-violation? @var{obj}
+This condition type could be defined by:
+
+@example
+(define-condition-type &implementation-restriction
+    &violation
+  make-implementation-restriction-violation
+  implementation-restriction-violation?)
+@end example
+
+This type describes a violation of an implementation restriction allowed
+by the specification, such as the absence of representations for NaNs
+and infinities.
+@end deffn
+
+
+@tindex &lexical
+@deffn {Condition Kind} {&lexical}
+@deffnx Procedure make-lexical-violation
+@deffnx Procedure lexical-violation? @var{obj}
+This condition type could be defined by:
+
+@example
+(define-condition-type &lexical &violation
+  make-lexical-violation lexical-violation?)
+@end example
+
+This type describes syntax violations at the level of the datum syntax.
+@end deffn
+
+
+@tindex &syntax
+@deffn {Condition Kind} {&syntax}
+@deffnx Procedure make-syntax-violation @var{form} @var{subform}
+@deffnx Procedure syntax-violation? @var{obj}
+@deffnx Procedure syntax-violation-form @var{condition}
+@deffnx Procedure syntax-violation-subform @var{condition}
+This condition type could be defined by:
+
+@example
+(define-condition-type &syntax &violation
+  make-syntax-violation syntax-violation?
+  (form syntax-violation-form)
+  (subform syntax-violation-subform))
+@end example
+
+This type describes syntax violations.  @var{form} should be the
+erroneous syntax object or a datum representing the code of the
+erroneous form.  @var{subform} should be an optional syntax object or
+datum within the erroneous form that more precisely locates the
+violation.  It can be @false{} to indicate the absence of more precise
+information.
+@end deffn
+
+
+@tindex &undefined
+@deffn {Condition Kind} {&undefined}
+@deffnx Procedure make-undefined-violation
+@deffnx Procedure undefined-violation? @var{obj}
+This condition type could be defined by:
+
+@example
+(define-condition-type &undefined &violation
+  make-undefined-violation undefined-violation?)
+@end example
+
+This type describes unbound identifiers in the program.
+@end deffn
 
 @c page
 @c ------------------------------------------------------------

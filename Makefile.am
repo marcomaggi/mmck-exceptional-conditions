@@ -66,7 +66,8 @@ MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SHARED_LIBS	=
 # This is the "(mmck exceptional-conditions)" shared library file pathname.
 #
 MMCK_EXCEPTIONAL_CONDITIONS_RUNTIME_SHARED_LIBS	= \
-	lib/mmck.exceptional-conditions.$(MMCK_SOEXT)
+	lib/mmck.exceptional-conditions.$(MMCK_SOEXT)		\
+	lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT)
 
 # Temporary  files  we need  for  parallel  builds, ".temp",  ".lock",
 # ".stamp".
@@ -76,9 +77,9 @@ MMCK_EXCEPTIONAL_CONDITIONS_TEMP_FILES		=
 
 #### library (mmck exceptional-conditions): module version
 
-MMCK_EXCEPTIONAL_CONDITIONS_MODULES			+= lib/mmck.exceptional-conditions.version.scm
-MMCK_EXCEPTIONAL_CONDITIONS_RUNTIME_OBJECTS		+= lib/mmck.exceptional-conditions.version.$(OBJEXT)
-MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SOURCES		+= lib/mmck.exceptional-conditions.version.import.scm
+MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.version.scm
+MMCK_EXCEPTIONAL_CONDITIONS_RUNTIME_OBJECTS	+= lib/mmck.exceptional-conditions.version.$(OBJEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SOURCES	+= lib/mmck.exceptional-conditions.version.import.scm
 MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_DEPS		+= lib/mmck.exceptional-conditions.version.import.$(MMCK_SOEXT)
 MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SHARED_LIBS	+= lib/mmck.exceptional-conditions.version.import.$(MMCK_SOEXT)
 MMCK_EXCEPTIONAL_CONDITIONS_TEMP_FILES		+= \
@@ -126,6 +127,74 @@ lib/mmck.exceptional-conditions.version.import.$(MMCK_SOEXT): lib/mmck.exception
 	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
 
 
+#### library (mmck exceptional-conditions): module helpers
+
+MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.helpers.scm
+MMCK_EXCEPTIONAL_CONDITIONS_RUNTIME_OBJECTS	+= lib/mmck.exceptional-conditions.helpers.$(OBJEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SOURCES	+= lib/mmck.exceptional-conditions.helpers.import.scm
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_DEPS		+= lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SHARED_LIBS	+= lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_TEMP_FILES		+= \
+	lib/mmck.exceptional-conditions.helpers.temp				\
+	lib/mmck.exceptional-conditions.helpers.lock				\
+	lib/mmck.exceptional-conditions.helpers.stamp
+
+lib/mmck.exceptional-conditions.helpers.stamp: lib/mmck.exceptional-conditions.helpers.scm $(MMCK_OBJECTS_DEPS)
+	@rm -f lib/mmck.exceptional-conditions.helpers.temp
+	@touch lib/mmck.exceptional-conditions.helpers.temp
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_OBJECT_SHARED) lib/mmck.exceptional-conditions.helpers.$(OBJEXT) $(<) -prologue lib/config.scm
+	@$(MV) mmck.exceptional-conditions.helpers.import.scm lib/mmck.exceptional-conditions.helpers.import.scm
+	@mv -f lib/mmck.exceptional-conditions.helpers.temp $@
+
+lib/mmck.exceptional-conditions.helpers.import.scm lib/mmck.exceptional-conditions.helpers.$(OBJEXT): lib/mmck.exceptional-conditions.helpers.stamp
+	@dry=; for f in x $$MAKEFLAGS; do \
+	  case $$f in \
+	    *=*|--*);; \
+	    *n*) dry=:;; \
+	  esac; \
+	done; \
+	if test -f $@; then :; else \
+	  $$dry trap 'rm -rf lib/mmck.exceptional-conditions.helpers.lock lib/mmck.exceptional-conditions.helpers.stamp' 1 2 13 15; \
+	  if $$dry mkdir lib/mmck.exceptional-conditions.helpers.lock 2>/dev/null; then \
+	    $$dry rm -f lib/mmck.exceptional-conditions.helpers.stamp; \
+	    $(MAKE) $(AM_MAKEFLAGS) lib/mmck.exceptional-conditions.helpers.stamp; \
+	    $$dry rmdir lib/mmck.exceptional-conditions.helpers.lock; \
+	  else \
+	    while test -d lib/mmck.exceptional-conditions.helpers.lock && test -z "$$dry"; do \
+	      sleep 1; \
+	    done; \
+	    $$dry test -f lib/mmck.exceptional-conditions.helpers.stamp; exit $$?; \
+	  fi; \
+	fi
+
+lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT): lib/mmck.exceptional-conditions.helpers.import.scm
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
+
+## --------------------------------------------------------------------
+
+# We build this libraries to use  its facilities at expand-time in the
+# other modules; we would like not to install it!
+#
+# But this  library is also needed  to run the test  suite; this means
+# the  rule "make  installcheck" will  work  only if  we install  this
+# library too.  So we do it.  In the end it is a very small library...
+#
+# Maybe we could do some trick with GNU Automake's substitution symbol
+# @MAINTAINER_MODE_TRUE@ which (it is my understanding):
+#
+# * Expands to the empty string when maintainer mode is enabled.
+#
+# * Expands to the comment character when maintainer mode is disabled.
+#
+# With this we could include/exclude  the installation of this library
+# depending on the mode.  We are not doing it right now.
+#
+# Life is hard!  (Marco Maggi; May 30, 2019)
+#
+lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT): lib/mmck.exceptional-conditions.helpers.$(OBJEXT)
+	$(MMCK_LIB_ENV) $(CSC_LINK_LIBRARY) $(@) $(^)
+
+
 #### library (mmck exceptional-conditions): module condition-objects
 
 MMCK_EXCEPTIONAL_CONDITIONS_MODULES			+= lib/mmck.exceptional-conditions.condition-objects.scm
@@ -139,7 +208,10 @@ MMCK_EXCEPTIONAL_CONDITIONS_TEMP_FILES		+= \
 	lib/mmck.exceptional-conditions.condition-objects.stamp
 
 MMCK_EXCEPTIONAL_CONDITIONS_CONDITION_OBJECTS_DEPS = \
-	$(MMCK_OBJECTS_DEPS)
+	lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT)	\
+	$(MMCK_OBJECTS_DEPS)						\
+	\
+	lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT)
 
 lib/mmck.exceptional-conditions.condition-objects.stamp: \
 		lib/mmck.exceptional-conditions.condition-objects.scm \
