@@ -49,6 +49,7 @@ AC_CACHE_SAVE
 #### external libraries
 
 MMUX_CHICKEN_SCHEME
+MMUX_CHICKEN_CHECK_LIBRARY([MATCHABLE],[matchable])
 MMUX_CHICKEN_CHECK_LIBRARY([MMCK_CHECKS],[mmck.checks])
 
 AM_CONDITIONAL([MMCK_TESTING_ENABLED],[test "x$chicken_cv_schemelib_MMCK_CHECKS" = xyes])
