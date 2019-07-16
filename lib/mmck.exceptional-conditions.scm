@@ -29,13 +29,15 @@
 ;;;; units and module header
 
 (declare (unit mmck.exceptional-conditions)
-	 (uses mmck.exceptional-conditions.condition-objects)
 	 (uses mmck.exceptional-conditions.version)
+	 (uses mmck.exceptional-conditions.condition-objects)
+	 (uses mmck.exceptional-conditions.handlers)
 	 (emit-import-library mmck.exceptional-conditions))
 
 (module (mmck.exceptional-conditions)
     ()
   (import (only (chicken module) reexport))
+  (reexport (mmck.exceptional-conditions.handlers))
   (reexport (mmck.exceptional-conditions.condition-objects))
   (reexport (mmck.exceptional-conditions.version))
   #| end of module |# )

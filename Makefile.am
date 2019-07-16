@@ -197,9 +197,9 @@ lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT): lib/mmck.exceptional-cond
 
 #### library (mmck exceptional-conditions): module condition-objects
 
-MMCK_EXCEPTIONAL_CONDITIONS_MODULES			+= lib/mmck.exceptional-conditions.condition-objects.scm
-MMCK_EXCEPTIONAL_CONDITIONS_RUNTIME_OBJECTS		+= lib/mmck.exceptional-conditions.condition-objects.$(OBJEXT)
-MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SOURCES		+= lib/mmck.exceptional-conditions.condition-objects.import.scm
+MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.condition-objects.scm
+MMCK_EXCEPTIONAL_CONDITIONS_RUNTIME_OBJECTS	+= lib/mmck.exceptional-conditions.condition-objects.$(OBJEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SOURCES	+= lib/mmck.exceptional-conditions.condition-objects.import.scm
 MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_DEPS		+= lib/mmck.exceptional-conditions.condition-objects.import.$(MMCK_SOEXT)
 MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SHARED_LIBS	+= lib/mmck.exceptional-conditions.condition-objects.import.$(MMCK_SOEXT)
 MMCK_EXCEPTIONAL_CONDITIONS_TEMP_FILES		+= \
@@ -245,6 +245,59 @@ lib/mmck.exceptional-conditions.condition-objects.import.scm lib/mmck.exceptiona
 	fi
 
 lib/mmck.exceptional-conditions.condition-objects.import.$(MMCK_SOEXT): lib/mmck.exceptional-conditions.condition-objects.import.scm
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
+
+
+#### library (mmck exceptional-conditions): module handlers
+
+MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.handlers.scm
+MMCK_EXCEPTIONAL_CONDITIONS_RUNTIME_OBJECTS	+= lib/mmck.exceptional-conditions.handlers.$(OBJEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SOURCES	+= lib/mmck.exceptional-conditions.handlers.import.scm
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_DEPS		+= lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SHARED_LIBS	+= lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_TEMP_FILES		+= \
+	lib/mmck.exceptional-conditions.handlers.temp	\
+	lib/mmck.exceptional-conditions.handlers.lock	\
+	lib/mmck.exceptional-conditions.handlers.stamp
+
+MMCK_EXCEPTIONAL_CONDITIONS_HANDLERS_DEPS = \
+	lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT)	\
+	$(MMCK_OBJECTS_DEPS)						\
+	\
+	lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT)
+
+lib/mmck.exceptional-conditions.handlers.stamp: \
+		lib/mmck.exceptional-conditions.handlers.scm \
+		$(MMCK_EXCEPTIONAL_CONDITIONS_HANDLERS_DEPS)
+	@rm -f lib/mmck.exceptional-conditions.handlers.temp
+	@touch lib/mmck.exceptional-conditions.handlers.temp
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_OBJECT_SHARED) lib/mmck.exceptional-conditions.handlers.$(OBJEXT) $(<)
+	@$(MV) mmck.exceptional-conditions.handlers.import.scm lib/mmck.exceptional-conditions.handlers.import.scm
+	@mv -f lib/mmck.exceptional-conditions.handlers.temp $@
+
+lib/mmck.exceptional-conditions.handlers.import.scm lib/mmck.exceptional-conditions.handlers.$(OBJEXT): \
+		lib/mmck.exceptional-conditions.handlers.stamp
+	@dry=; for f in x $$MAKEFLAGS; do \
+	  case $$f in \
+	    *=*|--*);; \
+	    *n*) dry=:;; \
+	  esac; \
+	done; \
+	if test -f $@; then :; else \
+	  $$dry trap 'rm -rf lib/mmck.exceptional-conditions.handlers.lock lib/mmck.exceptional-conditions.handlers.stamp' 1 2 13 15; \
+	  if $$dry mkdir lib/mmck.exceptional-conditions.handlers.lock 2>/dev/null; then \
+	    $$dry rm -f lib/mmck.exceptional-conditions.handlers.stamp; \
+	    $(MAKE) $(AM_MAKEFLAGS) lib/mmck.exceptional-conditions.handlers.stamp; \
+	    $$dry rmdir lib/mmck.exceptional-conditions.handlers.lock; \
+	  else \
+	    while test -d lib/mmck.exceptional-conditions.handlers.lock && test -z "$$dry"; do \
+	      sleep 1; \
+	    done; \
+	    $$dry test -f lib/mmck.exceptional-conditions.handlers.stamp; exit $$?; \
+	  fi; \
+	fi
+
+lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT): lib/mmck.exceptional-conditions.handlers.import.scm
 	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
 
 

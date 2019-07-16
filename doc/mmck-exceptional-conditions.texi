@@ -275,6 +275,16 @@ version is @samp{1.2.3-devel.0+x86-64}: the package version is the string
 @cindex Exceptional--conditions, raising
 @cindex Exceptional--conditions, handling
 
+@menu
+* exceptions reexports::        Syntactic bindings reexported from
+                                @library{chicken condition}.
+@end menu
+
+@c page
+@node exceptions reexports
+@section Syntactic bindings reexported from @library{chicken condition}
+
+
 @c page
 @node conditions
 @chapter Exceptional--condition object
