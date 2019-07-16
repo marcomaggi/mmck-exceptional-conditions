@@ -144,7 +144,7 @@ included in the section entitled ``@gnu{} Free Documentation License''.
 @menu
 * overview::                    Overview of the package.
 * version::                     Version functions.
-* exceptions::                  Raising exceptional-conditions.
+* exceptions::                  Handling exceptional-conditions.
 * conditions::                  Exceptional-condition objects.
 * errors::                      Raising errors.
 
@@ -267,7 +267,7 @@ version is @samp{1.2.3-devel.0+x86-64}: the package version is the string
 
 @c page
 @node exceptions
-@chapter Raising exceptional--conditions
+@chapter Handling exceptional--conditions
 
 
 @cindex Handling exceptional--conditions
