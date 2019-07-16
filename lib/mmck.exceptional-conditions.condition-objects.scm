@@ -64,7 +64,8 @@
      raise-continuable
      condition
      condition?
-     simple-conditions)
+     simple-conditions
+     condition-kinds)
   (import (scheme)
 	  (prefix (only (chicken base)
 			error
@@ -132,6 +133,11 @@
 (define (simple-conditions cnd)
   (map (lambda (C)
 	 (apply chicken::make-property-condition C))
+    (chicken::condition->list cnd)))
+
+(define (condition-kinds cnd)
+  (map (lambda (C)
+	 (car C))
     (chicken::condition->list cnd)))
 
 ;;; --------------------------------------------------------------------

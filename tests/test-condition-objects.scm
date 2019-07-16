@@ -492,6 +492,23 @@
   #f)
 
 
+(parameterize ((check-test-name		'inspection))
+
+  (check
+      (condition-kinds
+       (condition (make-error)
+		  (make-who-condition 'me)
+		  (make-message-condition "the message")
+		  (make-irritants-condition '(1 2 3))))
+    => '(&error &serious &condition
+		&who &condition
+		&message &condition
+		&irritants &condition
+	 ))
+
+  #f)
+
+
 ;;;; done
 
 (check-report)
