@@ -173,15 +173,21 @@ Indexes
 
 
 This document describes version @value{VERSION} of @value{PACKAGE}, a @chicken{} language library
-implementing facilities to handle exceptional--conditions.  @chicken{} is a Scheme-to-C compiler
+implementing facilities to handle exceptional conditions.  @chicken{} is a Scheme-to-C compiler
 supporting the language features as defined in the ``Revised^5 Report on Scheme''.
 
 This package supports @posix{} platforms.  This package depends upon the @chicken{} egg
-@code{coops}.  To run the tests distributed with the source code: this package depends upon the
+@code{matchable}.  To run the tests distributed with the source code: this package depends upon the
 package @mmck{} Checks.
 
+@value{PACKAGE} defines an @api{} derived from the one specified in the ``Revised^6 Report on the
+Algorithmic Language Scheme'' (@rnrs{6}); this document itself contains revised sections of the
+original @rnrs{6} document.  While similar, the two @api{}s are not equal; however, this package
+should make it easier to port @rnrs{6} code to @chicken.
+
 The package installs the library @library{mmck exceptional-conditions} along with its import
-library.  To require the library and import its syntactic bindings in a module we can do:
+library; this library has naming conflicts with the module @library{chicken condition} bundled with
+@chicken{}.  To require the library and import its syntactic bindings in a module we can do:
 
 @example
 (declare (unit my-module)
@@ -315,16 +321,16 @@ kind has no fields.
 @end deftp
 
 
-@deffn Procedure condition @vari{condition} @dots{}
+@defun condition @vari{condition} @dots{}
 Return a condition object with the components of the @var{condition}s as its components, in the same
 order, i.e., with the components of @vari{condition} appearing first in the same order as in
 @vari{condition}, then with the components of @varii{condition}, and so on.  The returned condition
 is compound if the total number of components is zero or greater than one.  Otherwise, it may be
 compound or simple.
-@end deffn
+@end defun
 
 
-@deffn Procedure simple-conditions @var{condition}
+@defun simple-conditions @var{condition}
 The @func{simple-conditions} procedure returns a list of the components of @var{condition}, in the
 same order as they appeared in the construction of @var{condition}.  The returned list is immutable.
 If the returned list is modified, the effect on @var{condition} is unspecified.
@@ -333,12 +339,30 @@ If the returned list is modified, the effect on @var{condition} is unspecified.
 @strong{NOTE} Because @func{condition} decomposes its arguments into simple conditions,
 @func{simple-conditions} always returns a ``flattened'' list of simple conditions.
 @end quotation
-@end deffn
+@end defun
 
 
-@deffn Procedure {condition?} @var{obj}
+@defun {condition?} @var{obj}
 Return @true{} if @var{obj} is a (simple or compound) condition, otherwise return @false{}.
-@end deffn
+@end defun
+
+
+@defun condition-kinds @var{obj}
+The argument @var{obj} must be a condition object, either simple or compound.  Return a list of
+symbols representing the condition kinds in @var{obj}; the list may contain duplicates.
+
+@lisp
+(condition-kinds
+  (condition (make-error)
+             (make-who-condition 'me)
+             (make-message-condition "the message")
+             (make-irritants-condition '(1 2 3))))
+@result{} (&error &serious &condition
+    &who &condition
+    &message &condition
+    &irritants &condition)
+@end lisp
+@end defun
 
 
 @deffn Syntax define-condition-type @qvar{condition-kind} @qvar{supertype} @qvar{constructor} @qvar{predicate} @qvari{field-spec} @dots{}
@@ -485,9 +509,9 @@ Hierarchy of predefined condition types:
 
 @tindex &message
 @deffn {Condition Kind} {&message}
-@deffnx Procedure make-message-condition @var{message}
-@deffnx Procedure message-condition? @var{obj}
-@deffnx Procedure condition-message @var{condition}
+@deffnx Function make-message-condition @var{message}
+@deffnx Function message-condition? @var{obj}
+@deffnx Function condition-message @var{condition}
 This condition type could be defined by:
 
 @example
@@ -503,8 +527,8 @@ humans.
 
 @tindex &warning
 @deffn {Condition Kind} {&warning}
-@deffnx Procedure make-warning
-@deffnx Procedure warning? @var{obj}
+@deffnx Function make-warning
+@deffnx Function warning? @var{obj}
 This condition type could be defined by:
 
 @example
@@ -520,8 +544,8 @@ program's execution later.
 
 @tindex &serious
 @deffn {Condition Kind} {&serious}
-@deffnx Procedure make-serious-condition
-@deffnx Procedure serious-condition? @var{obj}
+@deffnx Function make-serious-condition
+@deffnx Function serious-condition? @var{obj}
 This condition type could be defined by:
 
 @example
@@ -537,8 +561,8 @@ other condition types.
 
 @tindex &error
 @deffn {Condition Kind} {&error}
-@deffnx Procedure make-error
-@deffnx Procedure error? @var{obj}
+@deffnx Function make-error
+@deffnx Function error? @var{obj}
 This condition type could be defined by:
 
 @example
@@ -554,8 +578,8 @@ user.
 
 @tindex &violation
 @deffn {Condition Kind} {&violation}
-@deffnx Procedure make-violation
-@deffnx Procedure violation? @var{obj}
+@deffnx Function make-violation
+@deffnx Function violation? @var{obj}
 This condition type could be defined by:
 
 @example
@@ -570,8 +594,8 @@ standard, typically caused by a programming error.
 
 @tindex &assertion
 @deffn {Condition Kind} {&assertion}
-@deffnx Procedure make-assertion-violation
-@deffnx Procedure assertion-violation? @var{obj}
+@deffnx Function make-assertion-violation
+@deffnx Function assertion-violation? @var{obj}
 This condition type could be defined by:
 
 @example
@@ -586,9 +610,9 @@ invalid number of arguments, or passing an argument of the wrong type.
 
 @tindex &irritants
 @deffn {Condition Kind} {&irritants}
-@deffnx Procedure make-irritants-condition @var{irritants}
-@deffnx Procedure irritants-condition? @var{obj}
-@deffnx Procedure condition-irritants @var{condition}
+@deffnx Function make-irritants-condition @var{irritants}
+@deffnx Function irritants-condition? @var{obj}
+@deffnx Function condition-irritants @var{condition}
 This condition type could be defined by:
 
 @example
@@ -606,9 +630,9 @@ created by the procedures @func{error} and @func{assertion-violation}.
 
 @tindex &who
 @deffn {Condition Kind} {&who}
-@deffnx Procedure make-who-condition @var{who}
-@deffnx Procedure who-condition? @var{obj}
-@deffnx Procedure condition-who @var{condition}
+@deffnx Function make-who-condition @var{who}
+@deffnx Function who-condition? @var{obj}
+@deffnx Function condition-who @var{condition}
 This condition type could be defined by:
 
 @example
@@ -625,8 +649,8 @@ of this type are created by the @func{error} and @func{assertion-violation} proc
 
 @tindex &non-continuable
 @deffn {Condition Kind} {&non-continuable}
-@deffnx Procedure make-non-continuable-violation
-@deffnx Procedure non-continuable-violation? @var{obj}
+@deffnx Function make-non-continuable-violation
+@deffnx Function non-continuable-violation? @var{obj}
 This condition type could be defined by:
 
 @example
@@ -642,8 +666,8 @@ has returned.
 
 @tindex &implementation-restriction
 @deffn {Condition Kind} {&implementation-restriction}
-@deffnx Procedure make-implementation-restriction-violation
-@deffnx Procedure implementation-restriction-violation? @var{obj}
+@deffnx Function make-implementation-restriction-violation
+@deffnx Function implementation-restriction-violation? @var{obj}
 This condition type could be defined by:
 
 @example
@@ -661,8 +685,8 @@ and infinities.
 
 @tindex &lexical
 @deffn {Condition Kind} {&lexical}
-@deffnx Procedure make-lexical-violation
-@deffnx Procedure lexical-violation? @var{obj}
+@deffnx Function make-lexical-violation
+@deffnx Function lexical-violation? @var{obj}
 This condition type could be defined by:
 
 @example
@@ -676,10 +700,10 @@ This type describes syntax violations at the level of the datum syntax.
 
 @tindex &syntax
 @deffn {Condition Kind} {&syntax}
-@deffnx Procedure make-syntax-violation @var{form} @var{subform}
-@deffnx Procedure syntax-violation? @var{obj}
-@deffnx Procedure syntax-violation-form @var{condition}
-@deffnx Procedure syntax-violation-subform @var{condition}
+@deffnx Function make-syntax-violation @var{form} @var{subform}
+@deffnx Function syntax-violation? @var{obj}
+@deffnx Function syntax-violation-form @var{condition}
+@deffnx Function syntax-violation-subform @var{condition}
 This condition type could be defined by:
 
 @example
@@ -700,8 +724,8 @@ information.
 
 @tindex &undefined
 @deffn {Condition Kind} {&undefined}
-@deffnx Procedure make-undefined-violation
-@deffnx Procedure undefined-violation? @var{obj}
+@deffnx Function make-undefined-violation
+@deffnx Function undefined-violation? @var{obj}
 This condition type could be defined by:
 
 @example
@@ -717,8 +741,8 @@ This type describes unbound identifiers in the program.
 @chapter Raising errors
 
 
-@deffn Procedure error @var{who} @var{message} @vari{irritant} @dots{}
-@deffnx Procedure assertion-violation @var{who} @var{message} @vari{irritant} @dots{}
+@defun error @var{who} @var{message} @vari{irritant} @dots{}
+@defunx assertion-violation @var{who} @var{message} @vari{irritant} @dots{}
 @var{who} must be a string or a symbol or @false{}.  @var{message} must be a string.  The
 @var{irritant}s are arbitrary objects.
 
@@ -773,7 +797,7 @@ has condition type @condition{assertion}.
 (fac 4.5)       @error{} exception &assertion
 (fac -3)        @error{} exception &assertion
 @end example
-@end deffn
+@end defun
 
 
 @deffn Syntax assert @meta{expression}
@@ -824,6 +848,10 @@ and as backup at:
 the package @mmck{} Checks is available from:
 
 @center @url{https://github.com/marcomaggi/mmck-checks/}
+
+The original version of the @rnrs{6} document, and its errata, are available at:
+
+@center @url{http://www.r6rs.org/}
 
 @c page
 @node concept index
