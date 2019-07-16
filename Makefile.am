@@ -443,6 +443,18 @@ tests/test-errors.$(OBJEXT): tests/test-errors.scm $(MMCK_CHECK_DEPS)
 tests/test-errors.exe: tests/test-errors.$(OBJEXT)
 	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
 
+## --------------------------------------------------------------------
+
+EXTRA_DIST		+= tests/test-exception-handlers.scm
+MMCK_CHECK_OBJECTS	+= tests/test-exception-handlers.$(OBJEXT)
+MMCK_CHECK_PROGS	+= tests/test-exception-handlers.exe
+
+tests/test-exception-handlers.$(OBJEXT): tests/test-exception-handlers.scm $(MMCK_CHECK_DEPS)
+	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
+
+tests/test-exception-handlers.exe: tests/test-exception-handlers.$(OBJEXT)
+	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
+
 
 #### wrapping up tests
 

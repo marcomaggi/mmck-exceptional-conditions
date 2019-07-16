@@ -285,6 +285,44 @@ version is @samp{1.2.3-devel.0+x86-64}: the package version is the string
 @section Syntactic bindings reexported from @library{chicken condition}
 
 
+The following syntactic bindings are reexported by @library{mmck exceptional-conditions} from
+@library{chicken condition}.
+
+
+@defun with-exception-handler @var{handler} @var{thunk}
+Install the procedure @var{handler} as current exception handler in the dynamic environment, then
+invoke @var{thunk}.  When @var{thunk} returns successfully: return the values returned by
+@var{thunk}.
+
+@strong{NOTE} The @var{handler} must @strong{not} return locally: instead it must escape to a
+different continuation.  A normal return will cause an exception to be raised in the same dynamic
+environment, so entering an infinite loop.
+
+Usage examples:
+
+@lisp
+(call-with-current-continuation
+    (lambda (escape)
+      (with-exception-handler
+          (lambda (E)
+            (escape 456))
+        (lambda ()
+          123))))
+@result{} 123
+
+(call-with-current-continuation
+    (lambda (escape)
+      (with-exception-handler
+          (lambda (E)
+            (escape (list (condition-who E)
+                          (condition-message E)
+                          (condition-irritants E))))
+        (lambda ()
+          (error 'me "the message" 1 2 3)))))
+@result{} (me "the message" (1 2 3))
+@end lisp
+@end defun
+
 @c page
 @node conditions
 @chapter Exceptional--condition object
