@@ -71,15 +71,18 @@
 			error
 			define-record-printer)
 		  chicken::)
-	  (prefix (chicken condition)
+	  (prefix (only (chicken condition)
+			make-composite-condition
+			make-property-condition
+			condition?
+			condition-property-accessor
+			condition-predicate
+			condition->list
+			abort
+			signal)
 		  chicken::)
 	  (only (chicken format)
 		format)
-	  (prefix (only (chicken condition)
-			current-exception-handler
-			print-error-message
-			condition?)
-		  chicken::)
 	  (mmck exceptional-conditions helpers))
   (import-for-syntax (scheme)
 		     (only (chicken base)
