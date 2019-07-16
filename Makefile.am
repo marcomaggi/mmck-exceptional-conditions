@@ -395,6 +395,8 @@ tests/test-errors.exe: tests/test-errors.$(OBJEXT)
 
 CLEANFILES	+= $(MMCK_CHECK_PROGS) $(MMCK_CHECK_OBJECTS)
 
+if MMCK_TESTING_ENABLED
 TESTS		= $(MMCK_CHECK_PROGS)
+endif
 
 ### end of file
