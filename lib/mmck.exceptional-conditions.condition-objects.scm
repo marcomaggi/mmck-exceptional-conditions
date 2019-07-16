@@ -471,7 +471,7 @@
   (syntax-rules ()
     ((_ ?expr)
      (or ?expr
-	 (error 'assert "failed assertion" (quote ?expr))))
+	 (assertion-violation 'assert "failed assertion" (quote ?expr))))
     ))
 
 
