@@ -31,9 +31,7 @@
   (import (scheme)
 	  (mmck exceptional-conditions)
 	  (mmck exceptional-conditions helpers)
-	  (mmck checks)
-	  (only (chicken condition)
-		condition-case))
+	  (mmck checks))
 
 (check-set-mode! 'report-failed)
 (check-display "*** testing error functions\n")
