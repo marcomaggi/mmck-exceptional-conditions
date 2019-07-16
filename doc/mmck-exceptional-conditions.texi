@@ -144,8 +144,8 @@ included in the section entitled ``@gnu{} Free Documentation License''.
 @menu
 * overview::                    Overview of the package.
 * version::                     Version functions.
-* exceptions::                  Handling exceptional-conditions.
 * conditions::                  Exceptional-condition objects.
+* exceptions::                  Handling exceptional-conditions.
 * errors::                      Raising errors.
 
 Appendices
@@ -263,64 +263,6 @@ build metadata.
 Return a string representing the package's semantic version.  As example, if the full semantic
 version is @samp{1.2.3-devel.0+x86-64}: the package version is the string
 @samp{"v1.2.3-devel.0+x86-64"}, notice the leading character @samp{v}.
-@end defun
-
-@c page
-@node exceptions
-@chapter Handling exceptional--conditions
-
-
-@cindex Handling exceptional--conditions
-@cindex Raising exceptional--conditions
-@cindex Exceptional--conditions, raising
-@cindex Exceptional--conditions, handling
-
-@menu
-* exceptions reexports::        Syntactic bindings reexported from
-                                @library{chicken condition}.
-@end menu
-
-@c page
-@node exceptions reexports
-@section Syntactic bindings reexported from @library{chicken condition}
-
-
-The following syntactic bindings are reexported by @library{mmck exceptional-conditions} from
-@library{chicken condition}.
-
-
-@defun with-exception-handler @var{handler} @var{thunk}
-Install the procedure @var{handler} as current exception handler in the dynamic environment, then
-invoke @var{thunk}.  When @var{thunk} returns successfully: return the values returned by
-@var{thunk}.
-
-@strong{NOTE} The @var{handler} must @strong{not} return locally: instead it must escape to a
-different continuation.  A normal return will cause an exception to be raised in the same dynamic
-environment, so entering an infinite loop.
-
-Usage examples:
-
-@lisp
-(call-with-current-continuation
-    (lambda (escape)
-      (with-exception-handler
-          (lambda (E)
-            (escape 456))
-        (lambda ()
-          123))))
-@result{} 123
-
-(call-with-current-continuation
-    (lambda (escape)
-      (with-exception-handler
-          (lambda (E)
-            (escape (list (condition-who E)
-                          (condition-message E)
-                          (condition-irritants E))))
-        (lambda ()
-          (error 'me "the message" 1 2 3)))))
-@result{} (me "the message" (1 2 3))
-@end lisp
 @end defun
 
 @c page
@@ -782,6 +724,159 @@ This condition type could be defined by:
 @end example
 
 This type describes unbound identifiers in the program.
+@end deffn
+
+@c page
+@node exceptions
+@chapter Handling exceptional--conditions
+
+
+@cindex Handling exceptional--conditions
+@cindex Raising exceptional--conditions
+@cindex Exceptional--conditions, raising
+@cindex Exceptional--conditions, handling
+
+@menu
+* exceptions reexports::        Syntactic bindings reexported from
+                                @library{chicken condition}.
+@end menu
+
+@c page
+@node exceptions reexports
+@section Syntactic bindings reexported from @library{chicken condition}
+
+
+The following syntactic bindings are reexported by @library{mmck exceptional-conditions} from
+@library{chicken condition}.
+
+
+@defun with-exception-handler @var{handler} @var{thunk}
+Install the procedure @var{handler} as current exception handler in the dynamic environment, then
+invoke @var{thunk}.  When @var{thunk} returns successfully: return the values returned by
+@var{thunk}.
+
+@strong{NOTE} The @var{handler} must @strong{not} return locally: instead it must escape to a
+different continuation.  A normal return will cause an exception to be raised in the same dynamic
+environment, so entering an infinite loop.
+
+Usage examples:
+
+@lisp
+(call-with-current-continuation
+    (lambda (escape)
+      (with-exception-handler
+          (lambda (E)
+            (escape 456))
+        (lambda ()
+          123))))
+@result{} 123
+
+(call-with-current-continuation
+    (lambda (escape)
+      (with-exception-handler
+          (lambda (E)
+            (escape (list (condition-who E)
+                          (condition-message E)
+                          (condition-irritants E))))
+        (lambda ()
+          (error 'me "the message" 1 2 3)))))
+@result{} (me "the message" (1 2 3))
+@end lisp
+@end defun
+
+
+@deffn Syntax condition-case @qvar{expr} @qvar{clause} @dots{}
+Build an exception handler using the given clauses and install it; then evaluate the expression
+@qvar{expr} in the resulting dynamic environment.
+
+@itemize
+@item
+When @qvar{expr} returns locally: return the values returned by @qvar{expr}.
+
+@item
+When @qvar{expr} raises an exception: the installed exception handler is invoked: its argument is
+the raised object; it will select the clause with matching condition kind and evaluate its body
+forms; the return value of @syntax{condition-case} is the return value of the body forms.
+@end itemize
+
+Each @qvar{clause} must have one of the formats:
+
+@example
+(@qvar{kindlist} @qvaro{body} @qvar{body} @dots{})
+(@qvar{var} @qvar{kindlist} @qvaro{body} @qvar{body} @dots{})
+@end example
+
+@noindent
+and the element @qvar{kindlist} must have the format:
+
+@example
+(@qvaro{kind} @qvar{kind} @dots{})
+@end example
+
+@noindent
+only the system exceptions are allowed to use a list of symbols as condition kind, so for all the
+custom exceptional conditions the available formats are just:
+
+@example
+()
+(@qvar{kind})
+@end example
+
+@noindent
+an empty list of condition kinds will match any condition kind; we can use this rule to implement an
+``else'' clause.
+
+When present: @qvar{var} is a local variable bound to the raised object; we can use it in the
+@qvar{body} forms.
+
+Some usage examples:
+
+@lisp
+(condition-case
+    (raise (make-error))
+  (()   'here))
+@result{} here
+
+(condition-case
+    (raise (make-error))
+  ((&warning)   'warning)
+  ((&error)     'error)
+  (()           'else))
+@result{} error
+
+(condition-case
+    (raise (make-who-condition 'me))
+  ((&warning)   'warning)
+  ((&error)     'error)
+  (()           'else))
+@result{} else
+
+(condition-case
+    (raise (make-error))
+  (var ()
+    (list 'here (condition-kinds var))))
+@result{}(here (&error &serious &condition))
+
+(condition-case
+    (raise (make-error))
+  ((&warning)
+   'warning)
+  (var (&error)
+    (list 'error (condition-kinds var)))
+  (()
+   'else))
+@result{} (error (&error &serious &condition))
+
+(condition-case
+    (raise (make-warning))
+  ((&syntax)
+   'syntax)
+  ((&error)
+   'error)
+  (var ()
+    (list 'else (condition-kinds var))))
+@result{} (else (&warning &condition))
+@end lisp
 @end deffn
 
 @c page

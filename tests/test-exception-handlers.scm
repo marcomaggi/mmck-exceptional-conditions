@@ -29,6 +29,8 @@
 (module (test-exception-handers)
     ()
   (import (scheme)
+	  (only (chicken base)
+		call/cc)
 	  (mmck exceptional-conditions)
 	  (mmck exceptional-conditions helpers)
 	  (mmck checks))
@@ -60,6 +62,148 @@
 	      (lambda ()
 		(error 'me "the message" 1 2 3)))))
     => '(me "the message" (1 2 3)))
+
+  (values))
+
+
+#;(parameterise ((check-test-name		'condition-case-equiv))
+
+  (define-syntax condition-case-clause
+    (syntax-rules ()
+      ((_ ?escape ?kindvar ?cndvar)
+       (raise ?cndvar))
+
+      ((_ ?escape ?kindvar ?cndvar (() ?body0 ?body ...) ?clause ...)
+       (?escape (begin ?body0 ?body ...)))
+
+      ((_ ?escape ?kindvar ?cndvar (() ?body0 ?body ...) ?clause ...)
+       (?escape (let ((?cndvar1 ?cndvar))
+		  ?body0 ?body ...)))
+
+      ((_ ?escape ?kindvar ?cndvar (?kind ?body0 ?body ...) ?clause ...)
+       (if (memv ?kind ?kindvar)
+	   (?escape (begin ?body0 ?body ...))
+	 (condition-case-clause ?escape ?kindvar ?cndvar ?clause ...)))
+
+      ((_ ?escape ?kindvar ?cndvar (?cndvar1 ?kind ?body0 ?body ...) ?clause ...)
+       (if (memv ?kind ?kindvar)
+	   (?escape (let ((?cndvar1 ?cndvar))
+		      ?body0 ?body ...))
+	 (condition-case-clause ?escape ?kindvar ?cndvar ?clause ...)))
+      ))
+
+  (define-syntax condition-case-equiv
+    (syntax-rules ()
+      ((_ ?expr ?clause0 ?clause ...)
+       (call/cc
+	   (lambda (escape)
+	     (with-exception-handler
+		 (lambda (cndvar)
+		   (let ((kinds (condition-kinds cndvar)))
+		     (condition-case-clause escape kinds cndvar ?clause0 ?clause ...)))
+	       (lambda ()
+		 ?expr)))))
+      ))
+
+;;; --------------------------------------------------------------------
+;;; no vars
+
+  (check
+      (condition-case-equiv
+	  (raise (make-error))
+	(()
+	 'here))
+    => 'here)
+
+  (check
+      (condition-case-equiv
+	  (raise (make-error))
+	((&undefined)
+	 'undefined)
+	((&error)
+	 'error)
+	(()
+	 'else))
+    => 'error)
+
+  (check
+      (condition-case-equiv
+	  (raise (make-who-condition 'me))
+	((&undefined)
+	 'undefined)
+	((&error)
+	 'error)
+	(()
+	 'else))
+    => 'else)
+
+  (values))
+
+
+(parameterise ((check-test-name		'condition-case))
+
+;;; no vars
+
+  (check
+      (condition-case
+	  (raise (make-error))
+	(()
+	 'here))
+    => 'here)
+
+  (check
+      (condition-case
+	  (raise (make-error))
+	((&warning)
+	 'warning)
+	((&error)
+	 'error)
+	(()
+	 'else))
+    => 'error)
+
+  (check
+      (condition-case
+	  (raise (make-who-condition 'me))
+	((&warning)
+	 'warning)
+	((&error)
+	 'error)
+	(()
+	 'else))
+    => 'else)
+
+;;; --------------------------------------------------------------------
+;;; no vars
+
+  (check
+      (condition-case
+	  (raise (make-error))
+	(var ()
+	     (list 'here (condition-kinds var))))
+    => '(here (&error &serious &condition)))
+
+  (check
+      (condition-case
+	  (raise (make-error))
+	((&warning)
+	 'warning)
+	(var (&error)
+	     (list 'error (condition-kinds var)))
+	(()
+	 'else))
+    => '(error (&error &serious &condition)))
+
+  (check
+      (condition-case
+	  (raise (make-warning))
+	((&syntax)
+	 'syntax)
+	((&error)
+	 'error)
+	(var ()
+	     (list 'else (condition-kinds var))))
+    => '(else (&warning &condition)))
 
   (values))
 
