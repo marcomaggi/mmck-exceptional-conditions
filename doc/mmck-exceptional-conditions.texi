@@ -763,6 +763,7 @@ installed before using any of them.  We can do this in a module with:
 @menu
 * exceptions handling::         Exceptions handling.
 * exceptions errors::           Raising errors.
+* exceptions interop::          Interoperability with @chicken{}.
 @end menu
 
 @c page
@@ -1012,6 +1013,106 @@ true value, that value is returned from the @func{assert} expression.  If @meta{
 @false{}, an exception with condition types @condition{assertion} and @condition{message} is raised.
 The message provided in the condition object is implementation--dependent.
 @end deffn
+
+@c page
+@node exceptions interop
+@section Interoperability with @chicken{}
+
+
+There is limited interoperability between the library @library{mmck exceptional-conditions} and the
+module @library{chicken condition} bundled with @chicken{}.  We achieve it by setting @chicken{}'s
+exception handler to @func{raise-continuable} at the top level:
+
+@lisp
+(module (demo)
+    ()
+  (import (scheme)
+          (mmck exceptional-conditions)
+          (prefix (chicken condition)
+                  chicken::))
+
+  (chicken::current-exception-handler raise-continuable)
+
+  #| end of module |# )
+@end lisp
+
+@c ------------------------------------------------------------------------
+
+With this setup we can catch exceptions raised with @func{signal} using @value{PACKAGE}'s
+@func{with-exception-handler}:
+
+@lisp
+(define C
+  (with-exception-handler
+      ;;This handler returns.
+      (lambda (E) E)
+    (lambda ()
+      (chicken::signal
+       (chicken::make-property-condition 'demo
+         'location  'me
+         'message   "the message"
+         'arguments '(1 2 3))))))
+
+(chicken::get-condition-property C 'demo 'location)
+@result{} me
+
+(chicken::get-condition-property C 'demo 'message)
+@result{} "the message"
+
+(chicken::get-condition-property C 'demo 'arguments)
+@result{} (1 2 3)
+@end lisp
+
+@noindent
+and we can catch exceptions raised with @func{abort} using @value{PACKAGE}'s
+@func{with-exception-handler}:
+
+@lisp
+(call-with-current-continuation
+    (lambda (escape)
+      (with-exception-handler
+          (lambda (E)
+            (escape
+             (list
+              (chicken::get-condition-property E 'demo 'location)
+              (chicken::get-condition-property E 'demo 'message)
+              (chicken::get-condition-property E 'demo 'arguments))))
+        (lambda ()
+          (chicken::abort
+           (chicken::make-property-condition 'demo
+             'location  'me
+             'message   "the message"
+             'arguments '(1 2 3)))))))
+@result{} (me "the message" (1 2 3))
+@end lisp
+
+@noindent
+notice that, due to how @func{abort} is defined, if the handler returns we enter an infinite loop,
+exactly like it happens with @chicken{}'s @func{with-exception-handler}.
+
+It is @strong{not possible} to handle exceptions raised with @func{raise} and
+@func{raise-continuable} using @chicken{}'s @func{with-exception-handler}; however, we can catch
+them and convert them:
+
+@lisp
+(call-with-current-continuation
+    (lambda (escape)
+      (chicken::with-exception-handler
+          (lambda (E)
+            (escape (error? E)))
+        (lambda ()
+          (with-exception-handler
+              chicken::signal
+            (lambda ()
+              (raise
+               (condition
+                 (make-error)
+                 (make-who-condition 'me)
+                 (make-message-condition "the message")
+                 (make-irritants-condition '(1 2 3))))))))))
+@result{} #t
+@end lisp
+
 
 @c page
 @c ------------------------------------------------------------

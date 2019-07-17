@@ -45,7 +45,7 @@
 (check-set-mode! 'report-failed)
 (check-display "*** testing CHICKEN compatibility\n")
 
-(current-exception-handler predefined-exception-handler)
+(chicken::current-exception-handler raise-continuable)
 
 
 (parameterise ((check-test-name		'chicken::with-exception-handler))
@@ -76,24 +76,10 @@
 		(chicken::error 'me "the message" 1 2 3)))))
     => '(me "the message" (1 2 3)))
 
-  ;;Raising an exception with ERROR.
-  ;;
-  (check
-      (call-with-current-continuation
-	  (lambda (escape)
-	    (chicken::with-exception-handler
-		(lambda (E)
-		  (escape (list (condition-who E)
-				(condition-message E)
-				(condition-irritants E))))
-	      (lambda ()
-		(error 'me "the message" 1 2 3)))))
-    => '(me "the message" (1 2 3)))
-
   (values))
 
 
-#;(parameterise ((check-test-name		'chicken::condition-case))
+(parameterise ((check-test-name		'chicken::condition-case))
 
 ;;; no vars
 
@@ -190,6 +176,196 @@
 	(var ()
 	     (list 'else (condition-kinds var))))
     => '(else (&warning &condition)))
+
+  (values))
+
+
+(parameterise ((check-test-name		'with-exception-handler))
+
+  ;;Raising an exception with CHICKEN::SIGNAL.  The handler returns.
+  ;;
+  (check
+      (let ((C (with-exception-handler
+		   (lambda (E) E)
+		 (lambda ()
+		   (chicken::signal
+		    (chicken::make-property-condition 'demo
+		      'location 'me
+		      'message "the message"
+		      'arguments '(1 2 3)))))))
+	(list (chicken::get-condition-property C 'demo 'location)
+	      (chicken::get-condition-property C 'demo 'message)
+	      (chicken::get-condition-property C 'demo 'arguments)))
+    => '(me "the message" (1 2 3)))
+
+  ;;Raising an exception with CHICKEN::SIGNAL.  The handler returns.
+  ;;
+  (check
+      (let ((C (with-exception-handler
+		   (lambda (E) E)
+		 (lambda ()
+		   (chicken::signal
+		    (condition (make-error)
+			       (make-who-condition 'me)
+			       (make-message-condition "the message")
+			       (make-irritants-condition '(1 2 3))))))))
+	(values (condition? C)
+		(serious-condition? C)
+		(error? C)
+		(condition-who C)
+		(condition-message C)
+		(condition-irritants C)))
+    => #t #t #t 'me "the message" '(1 2 3))
+
+  ;;Raising an exception with CHICKEN::SIGNAL.
+  ;;
+  (check
+      (call-with-current-continuation
+	  (lambda (escape)
+	    (with-exception-handler
+		(lambda (E)
+		  (escape (list (chicken::get-condition-property E 'demo 'location)
+				(chicken::get-condition-property E 'demo 'message)
+				(chicken::get-condition-property E 'demo 'arguments))))
+	      (lambda ()
+		(chicken::signal
+		 (chicken::make-property-condition 'demo
+		   'location 'me
+		   'message "the message"
+		   'arguments '(1 2 3)))))))
+    => '(me "the message" (1 2 3)))
+
+  ;;Raising an exception with CHICKEN::SIGNAL.
+  ;;
+  (check
+      (call-with-current-continuation
+	  (lambda (escape)
+	    (with-exception-handler
+		(lambda (E)
+		  (escape (condition? E)
+			  (serious-condition? E)
+			  (error? E)
+			  (condition-who E)
+			  (condition-message E)
+			  (condition-irritants E)))
+	      (lambda ()
+		(chicken::signal
+		 (condition (make-error)
+			    (make-who-condition 'me)
+			    (make-message-condition "the message")
+			    (make-irritants-condition '(1 2 3))))))))
+    => #t #t #t 'me "the message" '(1 2 3))
+
+;;; --------------------------------------------------------------------
+
+  ;;Raising an exception with CHICKEN::ABORT.
+  ;;
+  (check
+      (call-with-current-continuation
+	  (lambda (escape)
+	    (with-exception-handler
+		(lambda (E)
+		  (escape (list (chicken::get-condition-property E 'demo 'location)
+				(chicken::get-condition-property E 'demo 'message)
+				(chicken::get-condition-property E 'demo 'arguments))))
+	      (lambda ()
+		(chicken::abort
+		 (chicken::make-property-condition 'demo
+		   'location 'me
+		   'message "the message"
+		   'arguments '(1 2 3)))))))
+    => '(me "the message" (1 2 3)))
+
+  ;;Raising an exception with CHICKEN::ABORT.
+  ;;
+  (check
+      (call-with-current-continuation
+	  (lambda (escape)
+	    (with-exception-handler
+		(lambda (E)
+		  (escape (condition? E)
+			  (serious-condition? E)
+			  (error? E)
+			  (condition-who E)
+			  (condition-message E)
+			  (condition-irritants E)))
+	      (lambda ()
+		(chicken::abort
+		 (condition (make-error)
+			    (make-who-condition 'me)
+			    (make-message-condition "the message")
+			    (make-irritants-condition '(1 2 3))))))))
+    => #t #t #t 'me "the message" '(1 2 3))
+
+  ;;Raising  an exception  with CHICKEN::ABORT.   The handler  would go  into infinite  loop, so  it
+  ;;escapes.
+  ;;
+  (check
+      (let ((C (call/cc
+		   (lambda (escape)
+		     (with-exception-handler
+			 (lambda (E) (escape E))
+		       (lambda ()
+			 (chicken::abort
+			  (chicken::make-property-condition 'demo
+			    'location 'me
+			    'message "the message"
+			    'arguments '(1 2 3)))))))))
+	(list (chicken::get-condition-property C 'demo 'location)
+	      (chicken::get-condition-property C 'demo 'message)
+	      (chicken::get-condition-property C 'demo 'arguments)))
+    => '(me "the message" (1 2 3)))
+
+  ;;Raising  an exception  with CHICKEN::ABORT.   The handler  would go  into infinite  loop, so  it
+  ;;escapes.
+  ;;
+  (check
+      (let ((C (call/cc
+		   (lambda (escape)
+		     (with-exception-handler
+			 (lambda (E) (escape E))
+		       (lambda ()
+			 (chicken::abort
+			  (condition (make-error)
+				     (make-who-condition 'me)
+				     (make-message-condition "the message")
+				     (make-irritants-condition '(1 2 3))))))))))
+	(values (condition? C)
+		(serious-condition? C)
+		(error? C)
+		(condition-who C)
+		(condition-message C)
+		(condition-irritants C)))
+    => #t #t #t 'me "the message" '(1 2 3))
+
+  (values))
+
+
+(parameterise ((check-test-name		'interop))
+
+  (check
+      (call-with-current-continuation
+	  (lambda (escape)
+	    (chicken::with-exception-handler
+		(lambda (E)
+		  (escape (condition? E)
+			  (serious-condition? E)
+			  (error? E)
+			  (condition-who E)
+			  (condition-message E)
+			  (condition-irritants E)))
+	      (lambda ()
+		(with-exception-handler
+		    chicken::signal
+		  (lambda ()
+		    (raise
+		     (condition
+		       (make-error)
+		       (make-who-condition 'me)
+		       (make-message-condition "the message")
+		       (make-irritants-condition '(1 2 3))))))))))
+    => #t #t #t 'me "the message" '(1 2 3))
+
 
   (values))
 

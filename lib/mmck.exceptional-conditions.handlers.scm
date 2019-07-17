@@ -35,7 +35,6 @@
     (raise
      raise-continuable
      with-exception-handler
-     predefined-exception-handler
      error
      assertion-violation
      (syntax: assert error))
@@ -57,8 +56,6 @@
 		  debug-print)
 	  (mmck exceptional-conditions condition-objects))
   (import (only (chicken module) reexport))
-  (reexport (only (chicken condition)
-		  current-exception-handler))
   (import-for-syntax (scheme)
 		     (only (chicken base)
 			   define-record)
@@ -165,18 +162,7 @@
   (unless (procedure? thunk)
     (assertion-violation 'with-exception-handler "expected procedure as THUNK argument" thunk))
   (parameterize ((current-handlers (cons handler (current-handlers))))
-    (chicken::with-exception-handler
-	handler
-      (lambda ()
-	(thunk)))
-    #;(thunk)))
-
-(define (predefined-exception-handler obj)
-  (let* ((handlers	(current-handlers))
-	 (head		(car handlers))
-	 (tail		(cdr handlers)))
-    (parameterize ((current-handlers tail))
-      (head obj))))
+    (thunk)))
 
 
 ;;;; syntax GUARD
