@@ -1,7 +1,7 @@
 -*- coding: utf-8-unix -*-
 
-			     MMCK Template
-			     =============
+		      MMCK Exceptional Conditions
+		      ===========================
 
 
 Topics
@@ -20,13 +20,14 @@ Topics
 1. Introduction
 ---------------
 
-This is  a template project, to  be used as starting  point for packages
-that  build  and  install  CHICKEN language  libraries.   CHICKEN  is  a
-Scheme-to-C compiler supporting the language  features as defined in the
-``Revised^5 Report on Scheme''.
+This  package implements  facilities  to handle  exceptional--conditions
+under  the   CHICKEN  language.   CHICKEN  is   a  Scheme-to-C  compiler
+supporting the language features as defined in the ``Revised^5 Report on
+Scheme''.
 
-  The library  targets POSIX  systems.  To run  the tests:  this package
-depends upon the package MMCK Checks.
+  The  library targets  POSIX systems.   This package  depends upon  the
+CHICKEN egg  "matchable".  To run  the tests: this package  depends upon
+the package MMCK Checks.
 
   The package uses the GNU Autotools  and it is tested, using Travis CI,
 on both Ubuntu  GNU+Linux systems and OS X systems.
@@ -62,7 +63,7 @@ License     along     with     this    program.      If     not,     see
 
 To install from a proper release tarball, do this:
 
-    $ cd mmck-template-0.1.0
+    $ cd mmck-exceptional-conditions-0.1.0
     $ mkdir build
     $ cd build
     $ ../configure
@@ -84,11 +85,11 @@ significantly.
   The  Makefile supports  the  DESTDIR environment  variable to  install
 files in a temporary location, example: to see what will happen:
 
-    $ make -n install DESTDIR=/tmp/mmck-template
+    $ make -n install DESTDIR=/tmp/mmck-exceptional-conditions
 
 to really do it:
 
-    $ make install DESTDIR=/tmp/mmck-template
+    $ make install DESTDIR=/tmp/mmck-exceptional-conditions
 
   After the installation it is  possible to verify the installed library
 against the test suite with:
@@ -100,7 +101,7 @@ site): we must  install the GNU Autotools (GNU  Automake, GNU Autoconf),
 then  we must  first run  the script  "autogen.sh" from  the top  source
 directory, to generate the needed files:
 
-    $ cd mmck-template
+    $ cd mmck-exceptional-conditions
     $ sh autogen.sh
 
   After this the  procedure is the same  as the one for  building from a
@@ -157,19 +158,19 @@ C. Resources
 
 The latest release of this package can be downloaded from:
 
-       <https://bitbucket.org/marcomaggi/mmck-template/downloads>
+<https://bitbucket.org/marcomaggi/mmck-exceptional-conditions/downloads>
 
 development takes place at:
 
-	     <https://github.com/marcomaggi/mmck-template/>
+      <https://github.com/marcomaggi/mmck-exceptional-conditions/>
 
 and as backup at:
 
-	   <https://bitbucket.org/marcomaggi/mmck-template/>
+    <https://bitbucket.org/marcomaggi/mmck-exceptional-conditions/>
 
 the documentation is available online:
 
-	 <https://marcomaggi.github.io/docs/mmck-template.html>
+  <https://marcomaggi.github.io/docs/mmck-exceptional-conditions.html>
 
 the GNU Project software can be found here:
 
@@ -194,7 +195,7 @@ Travis CI is  a hosted, distributed continuous  integration service used
 to build and test software projects  hosted at GitHub.  We can find this
 project's dashboard at:
 
-	    <https://travis-ci.org/marcomaggi/mmck-template>
+     <https://travis-ci.org/marcomaggi/mmck-exceptional-conditions>
 
 Usage of this  service is configured through the  file `.travis.yml` and
 additional scripts are under the directory `meta/travis-ci`.
