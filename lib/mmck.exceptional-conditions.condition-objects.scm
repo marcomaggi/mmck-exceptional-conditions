@@ -41,12 +41,11 @@
 	      <condition>-total-number-of-fields
 	      split-constructor-args
 	      zip-constructor-args)
-     (syntax: assert error)
      ;; the following are defined by R6RS
-     &condition make-condition condition?
+     &condition condition?
      &who make-who-condition who-condition? condition-who
      &message make-message-condition message-condition? condition-message
-     &irritants make-irritants-condition make-irritants-condition/from-args irritants-condition? condition-irritants
+     &irritants make-irritants-condition irritants-condition? condition-irritants
      &warning make-warning warning?
      &serious make-serious-condition serious-condition?
      &error make-error error?
@@ -58,14 +57,14 @@
      &syntax make-syntax-violation syntax-violation?
      &undefined make-undefined-violation undefined-violation?
      ;;
-     error
-     assertion-violation
-     raise
-     raise-continuable
      condition
      condition?
      simple-conditions
-     condition-kinds)
+     condition-kinds
+     ;;
+     who-condition-value?
+     message-condition-value?
+     irritants-condition-value?)
   (import (scheme)
 	  (prefix (only (chicken base)
 			error
@@ -377,7 +376,7 @@
 
 (define-condition-type &irritants
     &condition
-  make-irritants-condition
+  $make-irritants-condition
   irritants-condition?
   (irritants	condition-irritants))
 
@@ -402,32 +401,32 @@
   violation?)
 
 (define-condition-type &assertion
-    &serious
+    &violation
   make-assertion-violation
   assertion-violation?)
 
 (define-condition-type &non-continuable
-    &serious
+    &violation
   make-non-continuable-violation
   non-continuable-violation?)
 
 (define-condition-type &implementation-restriction
-    &serious
+    &violation
   make-implementation-restriction-violation
   implementation-restriction-violation?)
 
 (define-condition-type &lexical
-    &serious
+    &violation
   make-lexical-violation
   lexical-violation?)
 
 (define-condition-type &syntax
-    &serious
+    &violation
   make-syntax-violation
   syntax-violation?)
 
 (define-condition-type &undefined
-    &serious
+    &violation
   make-undefined-violation
   undefined-violation?)
 
@@ -440,48 +439,10 @@
       (not     obj)))
 
 (define (message-condition-value? obj)
-  (string obj))
+  (string? obj))
 
-(define (error who message . irritants)
-  ;;R6RS states that there must be an "&irritants" condition.
-  ;;
-  (%internal-assert (who-condition-value?     who))
-  (%internal-assert (message-condition-value? message))
-  (raise
-   (if who
-       (condition
-	 (make-error)
-	 ($make-who-condition who)
-	 ($make-message-condition message)
-	 (make-irritants-condition irritants))
-     (condition
-	 (make-error)
-	 ($make-message-condition message)
-	 (make-irritants-condition irritants)))))
-
-(define (assertion-violation who message . irritants)
-  ;;R6RS states that there must be an "&irritants" condition.
-  ;;
-  (%internal-assert (who-condition-value?     who))
-  (%internal-assert (message-condition-value? message))
-  (raise
-   (if who
-       (condition
-	 (make-assertion-violation)
-	 ($make-who-condition who)
-	 ($make-message-condition message)
-	 (make-irritants-condition irritants))
-     (condition
-	 (make-assertion-violation)
-	 ($make-message-condition message)
-	 (make-irritants-condition irritants)))))
-
-(define-syntax assert
-  (syntax-rules ()
-    ((_ ?expr)
-     (or ?expr
-	 (assertion-violation 'assert "failed assertion" (quote ?expr))))
-    ))
+(define (irritants-condition-value? obj)
+  (list? obj))
 
 
 ;;;; extended exceptional-condition object constructors
@@ -491,34 +452,12 @@
   ($make-who-condition who))
 
 (define (make-message-condition message)
-  (%internal-assert (string? message))
+  (%internal-assert (message-condition-value? message))
   ($make-message-condition message))
 
-(define (make-irritants-condition/from-args . args)
-  (make-irritants-condition args))
-
-
-;;;; raising general exceptions
-
-(define (raise obj)
-  (chicken::abort obj))
-
-(define (raise-continuable obj)
-  (chicken::signal obj))
-
-(define (assertion-violation who message . irritants)
-  (raise
-   (condition (make-assertion-violation)
-	      (make-who-condition who)
-	      (make-message-condition message)
-	      (make-irritants-condition irritants))))
-
-(define (error who message . irritants)
-  (raise
-   (condition (make-error)
-	      (make-who-condition who)
-	      (make-message-condition message)
-	      (make-irritants-condition irritants))))
+(define (make-irritants-condition irritants)
+  (%internal-assert (irritants-condition-value? irritants))
+  ($make-irritants-condition irritants))
 
 
 ;;;; done

@@ -56,9 +56,12 @@
 		  case-lambda
 		  current-error-port
 		  define-record
+		  exit
+		  make-parameter
 		  parameterize
 		  receive
-		  unless))
+		  unless
+		  when))
   (import-for-syntax (scheme)
 		     (only (matchable)
 			   match))

@@ -146,7 +146,6 @@ included in the section entitled ``@gnu{} Free Documentation License''.
 * version::                     Version functions.
 * conditions::                  Exceptional-condition objects.
 * exceptions::                  Handling exceptional-conditions.
-* errors::                      Raising errors.
 
 Appendices
 
@@ -267,7 +266,7 @@ version is @samp{1.2.3-devel.0+x86-64}: the package version is the string
 
 @c page
 @node conditions
-@chapter Exceptional--condition object
+@chapter Exceptional--condition objects
 
 
 @cindex Exceptional--condition objects
@@ -736,152 +735,216 @@ This type describes unbound identifiers in the program.
 @cindex Exceptional--conditions, raising
 @cindex Exceptional--conditions, handling
 
+
+@value{PACKAGE} allows programs to deal with exceptional situations using two cooperating
+facilities: The exception system for raising and handling exceptional situations, and the condition
+system for describing these situations.
+
+The exception system allows the program, when it detects an exceptional situation, to pass control
+to an exception handler, and to dynamically establish such exception handlers.  Exception handlers
+are always invoked with an object describing the exceptional situation.  @value{PACKAGE}'s condition
+system provides a predefined taxonomy of such descriptive objects, as well as a facility for
+extending the taxonomy, @ref{conditions, Exceptional--condition object}.
+
+The facilities described in this section are built upon a custom exception handler that must be
+installed before using any of them.  We can do this in a module with:
+
+@lisp
+(module (mine)
+    ()
+  (import (scheme)
+          (mmck exceptional-condition))
+
+  (current-exception-handler default-exception-handler)
+
+  #| end of module |#)
+@end lisp
+
 @menu
-* exceptions reexports::        Syntactic bindings reexported from
-                                @library{chicken condition}.
+* exceptions handling::         Exceptions handling.
+* exceptions errors::           Raising errors.
 @end menu
 
 @c page
-@node exceptions reexports
-@section Syntactic bindings reexported from @library{chicken condition}
+@node exceptions handling
+@section Exceptions handling
 
 
-The following syntactic bindings are reexported by @library{mmck exceptional-conditions} from
-@library{chicken condition}.
+This section describes @value{PACKAGE}'s exception--handling and exception--raising constructs
+provided by the @library{mmck exceptional-conditions} library.
+
+Exception handlers are one--argument procedures that determine the action the program takes when an
+exceptional situation is signalled.  The system implicitly maintains a current exception handler as
+part of the dynamic environment of the program.
+
+The program raises an exception by invoking the current exception handler, passing it an object
+encapsulating information about the exception.  Any procedure accepting one argument may serve as an
+exception handler and any object may be used to represent an exception.
+
+When a program begins its execution, the predefined exception handler:
+
+@itemize
+@item
+Handles all @condition{serious} conditions by interrupting execution, reporting that an exception
+has been raised, and displaying information about the condition object that was provided on the
+current value of @func{current-error-port}.  The handler then exits the process with exit status
+@code{255}.
+
+@item
+Handles all @condition{warning} conditions by reporting that an exception has been raised, and
+displaying information about the condition object that was provided on the current value of
+@func{current-error-port}.  The handler then returns attempting to resume execution.
+
+@item
+Handles all the other exceptional conditions by reporting that an exception has been raised, and
+displaying information about the condition object that was provided on the current value of
+@func{current-error-port}.  The handler then returns attempting to resume execution.
+@end itemize
+
+When the handler returns:
+
+@itemize
+@item
+If the exception was raised with @func{raise}, a new exception is raised in a dynamic environment in
+which the exception handler interrupts execution, reports that an exception has been raised, and
+displays information about the condition object that was provided on the current value of
+@func{current-error-port}.  The handler then exits the process with exit status @code{255}.
+
+@item
+If the exception was raised with @func{raise-continuable}, execution continues with the continuation
+of the call to @func{raise-continuable}.
+@end itemize
 
 
 @defun with-exception-handler @var{handler} @var{thunk}
-Install the procedure @var{handler} as current exception handler in the dynamic environment, then
-invoke @var{thunk}.  When @var{thunk} returns successfully: return the values returned by
+The argument @var{handler} must be a procedure and should accept one argument.  The argument
+@var{thunk} must be a procedure that accepts zero arguments.  The @func{with-exception-handler}
+procedure returns the results of invoking @var{thunk}.  @var{handler} is installed as the current
+exception handler for the dynamic extent (as determined by @func{dynamic-wind}) of the invocation of
 @var{thunk}.
+@end defun
 
-@strong{NOTE} The @var{handler} must @strong{not} return locally: instead it must escape to a
-different continuation.  A normal return will cause an exception to be raised in the same dynamic
-environment, so entering an infinite loop.
 
-Usage examples:
+@anchor{guard}
+@deffn Syntax guard (@qvar{variable} @qvari{cond-clause} @qvarii{cond-clause} @dots{}) @qvaro{body} @qvar{body} @dots{}
+@deffnx {Auxiliary Syntax} {=>}
+@deffnx {Auxiliary Syntax} else
+Each @qvar{cond-clause} is as in the specification of the standard syntax @syntax{cond}.  @samp{=>}
+and @samp{else} are matched as symbols.
+
+Evaluating a @syntax{guard} form evaluates the @qvar{body} forms with an exception handler that
+binds the raised object to @qvar{variable} and within the scope of that binding evaluates the
+clauses as if they were the clauses of a @syntax{cond} expression.  That implicit @syntax{cond}
+expression is evaluated with the continuation and dynamic environment of the @syntax{guard} form.
+If every @qvar{cond-clause}'s @qvar{test} evaluates to @false{} and there is no @code{else} clause,
+then @func{raise-continuable} is invoked on the raised object within the dynamic environment of the
+original call to @func{raise} or @func{raise-continuable} except that the current exception handler
+is that of the @syntax{guard} expression.
+@end deffn
+
+
+@defun raise @var{obj}
+Raise a @emph{non--continuable exception} by invoking the current exception handler on @var{obj}.
+
+The handler is called with a continuation whose dynamic environment is that of the call to
+@func{raise}, except that the current exception handler is the one that was in place when the
+handler being called was installed.  So if the handler itself raises an exception: that exception
+will be handled by the upper level handler; no infinite loop will happen by invoking the same
+handler again and again.
 
 @lisp
 (call-with-current-continuation
     (lambda (escape)
       (with-exception-handler
-          (lambda (E)
-            (escape 456))
+          (lambda (A)
+            (escape (cons 'A A)))
         (lambda ()
-          123))))
-@result{} 123
+          (with-exception-handler
+              (lambda (B)
+                (raise (cons 'B B)))
+            (lambda ()
+              (with-exception-handler
+                  (lambda (C)
+                    (raise (cons 'C C)))
+                (lambda ()
+                  (raise 123)))))))))
+@result{} (A B C . 123)
+@end lisp
 
-(call-with-current-continuation
-    (lambda (escape)
-      (with-exception-handler
-          (lambda (E)
-            (escape (list (condition-who E)
-                          (condition-message E)
-                          (condition-irritants E))))
-        (lambda ()
-          (error 'me "the message" 1 2 3)))))
-@result{} (me "the message" (1 2 3))
+If the handler returns: a non--continuable exception with condition type @condition{non-continuable}
+is raised in the same dynamic environment as the handler.
+
+@lisp
+(define C
+  (call-with-current-continuation
+      (lambda (escape)
+        (with-exception-handler
+            escape
+          (lambda ()
+            (with-exception-handler
+                ;;This handler returns!
+                (lambda (obj) obj)
+              (lambda ()
+                (raise 123))))))))
+
+(condition? C)                  @result{} #t
+(serious-condition? C)          @result{} #t
+(violation? C)                  @result{} #t
+(non-continuable-violation? C)  @result{} #t
+(condition-irritants C)         @result{} (123)
 @end lisp
 @end defun
 
 
-@deffn Syntax condition-case @qvar{expr} @qvar{clause} @dots{}
-Build an exception handler using the given clauses and install it; then evaluate the expression
-@qvar{expr} in the resulting dynamic environment.
+@defun raise-continuable @var{obj}
+Raise a @emph{continuable exception} by invoking the current exception handler on @var{obj}.  The
+handler is called with a continuation that is equivalent to the continuation of the call to
+@func{raise-continuable}, with these two exceptions:
 
-@itemize
+@enumerate
 @item
-When @qvar{expr} returns locally: return the values returned by @qvar{expr}.
-
-@item
-When @qvar{expr} raises an exception: the installed exception handler is invoked: its argument is
-the raised object; it will select the clause with matching condition kind and evaluate its body
-forms; the return value of @syntax{condition-case} is the return value of the body forms.
-@end itemize
-
-Each @qvar{clause} must have one of the formats:
-
-@example
-(@qvar{kindlist} @qvaro{body} @qvar{body} @dots{})
-(@qvar{var} @qvar{kindlist} @qvaro{body} @qvar{body} @dots{})
-@end example
-
-@noindent
-and the element @qvar{kindlist} must have the format:
-
-@example
-(@qvaro{kind} @qvar{kind} @dots{})
-@end example
-
-@noindent
-only the system exceptions are allowed to use a list of symbols as condition kind, so for all the
-custom exceptional conditions the available formats are just:
-
-@example
-()
-(@qvar{kind})
-@end example
-
-@noindent
-an empty list of condition kinds will match any condition kind; we can use this rule to implement an
-``else'' clause.
-
-When present: @qvar{var} is a local variable bound to the raised object; we can use it in the
-@qvar{body} forms.
-
-Some usage examples:
+The current exception handler is the one that was in place when the handler being called was
+installed.  So if the handler itself raises an exception: that exception will be handled by the
+upper level handler; no infinite loop will happen by invoking the same handler again and again.
 
 @lisp
-(condition-case
-    (raise (make-error))
-  (()   'here))
-@result{} here
-
-(condition-case
-    (raise (make-error))
-  ((&warning)   'warning)
-  ((&error)     'error)
-  (()           'else))
-@result{} error
-
-(condition-case
-    (raise (make-who-condition 'me))
-  ((&warning)   'warning)
-  ((&error)     'error)
-  (()           'else))
-@result{} else
-
-(condition-case
-    (raise (make-error))
-  (var ()
-    (list 'here (condition-kinds var))))
-@result{}(here (&error &serious &condition))
-
-(condition-case
-    (raise (make-error))
-  ((&warning)
-   'warning)
-  (var (&error)
-    (list 'error (condition-kinds var)))
-  (()
-   'else))
-@result{} (error (&error &serious &condition))
-
-(condition-case
-    (raise (make-warning))
-  ((&syntax)
-   'syntax)
-  ((&error)
-   'error)
-  (var ()
-    (list 'else (condition-kinds var))))
-@result{} (else (&warning &condition))
+(call-with-current-continuation
+    (lambda (escape)
+      (with-exception-handler
+          (lambda (A)
+            (escape (cons 'A A)))
+        (lambda ()
+          (with-exception-handler
+              (lambda (B)
+                (raise (cons 'B B)))
+            (lambda ()
+              (with-exception-handler
+                  (lambda (C)
+                    (raise (cons 'C C)))
+                (lambda ()
+                  (raise 123)))))))))
+@result{} (A B C . 123)
 @end lisp
-@end deffn
+
+@item
+If the handler being called returns, then it will again become the current exception handler and the
+values it returns become the values returned by the call to @func{raise-continuable}.
+
+@lisp
+(with-exception-handler
+    ;;This handler returns 2 values!
+    (lambda (obj)
+      (values 'obj obj))
+  (lambda ()
+    (raise-continuable 123)))
+@result{} obj 123
+@end lisp
+@end enumerate
+@end defun
 
 @c page
-@node errors
-@chapter Raising errors
+@node exceptions errors
+@section Raising errors
 
 
 @defun error @var{who} @var{message} @vari{irritant} @dots{}

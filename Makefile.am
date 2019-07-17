@@ -261,8 +261,9 @@ MMCK_EXCEPTIONAL_CONDITIONS_TEMP_FILES		+= \
 	lib/mmck.exceptional-conditions.handlers.stamp
 
 MMCK_EXCEPTIONAL_CONDITIONS_HANDLERS_DEPS = \
-	lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT)	\
-	$(MMCK_OBJECTS_DEPS)						\
+	lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT)		\
+	lib/mmck.exceptional-conditions.condition-objects.import.$(MMCK_SOEXT)	\
+	$(MMCK_OBJECTS_DEPS)							\
 	\
 	lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT)
 
@@ -453,6 +454,18 @@ tests/test-exception-handlers.$(OBJEXT): tests/test-exception-handlers.scm $(MMC
 	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
 
 tests/test-exception-handlers.exe: tests/test-exception-handlers.$(OBJEXT)
+	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
+
+## --------------------------------------------------------------------
+
+EXTRA_DIST		+= tests/test-chicken-compat.scm
+MMCK_CHECK_OBJECTS	+= tests/test-chicken-compat.$(OBJEXT)
+MMCK_CHECK_PROGS	+= tests/test-chicken-compat.exe
+
+tests/test-chicken-compat.$(OBJEXT): tests/test-chicken-compat.scm $(MMCK_CHECK_DEPS)
+	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
+
+tests/test-chicken-compat.exe: tests/test-chicken-compat.$(OBJEXT)
 	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
 
 

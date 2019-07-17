@@ -29,6 +29,8 @@
 (module (test-error)
     ()
   (import (scheme)
+	  (only (chicken base)
+		call/cc)
 	  (mmck exceptional-conditions)
 	  (mmck exceptional-conditions helpers)
 	  (mmck checks))
@@ -40,17 +42,20 @@
 (parameterise ((check-test-name		'errors))
 
   (check
-      (condition-case
-	  (error 'me "the message" 1 2 3)
-	(E (&error)
-	   (list (condition? E)
-		 (serious-condition? E)
-		 (error? E)
-		 (condition-who E)
-		 (condition-message E)
-		 (condition-irritants E)))
-	(E ()
-	   E))
+      ((call/cc
+	   (lambda (escape)
+	     (with-exception-handler
+		 (lambda (E)
+		   (escape
+		    (lambda ()
+		      (list (condition? E)
+			    (serious-condition? E)
+			    (error? E)
+			    (condition-who E)
+			    (condition-message E)
+			    (condition-irritants E)))))
+	       (lambda ()
+		 (error 'me "the message" 1 2 3))))))
     => '(#t #t #t me "the message" (1 2 3)))
 
   (values))
@@ -59,53 +64,39 @@
 (parameterise ((check-test-name		'assertions))
 
   (check
-      (condition-case
-	  (assertion-violation 'me "the message" 1 2 3)
-	(E (&assertion)
-	   (list (condition? E)
-		 (serious-condition? E)
-		 (assertion-violation? E)
-		 (condition-who E)
-		 (condition-message E)
-		 (condition-irritants E)))
-	(E ()
-	   E))
+      (call/cc
+	  (lambda (escape)
+	    (with-exception-handler
+		(lambda (E)
+		  (escape
+		   (list (condition? E)
+			 (serious-condition? E)
+			 (assertion-violation? E)
+			 (condition-who E)
+			 (condition-message E)
+			 (condition-irritants E))))
+	      (lambda ()
+		(assertion-violation 'me "the message" 1 2 3)))))
     => '(#t #t #t me "the message" (1 2 3)))
 
 ;;; --------------------------------------------------------------------
 
   (check
-      (condition-case
-	  (let ()
-	    (define (doit)
-	      123)
-	    (assert (doit)))
-	(E (&assertion)
-	   (list (condition? E)
-		 (serious-condition? E)
-		 (assertion-violation? E)
-		 (condition-who E)
-		 (condition-message E)
-		 (condition-irritants E)))
-	(E ()
-	   E))
-    => 123)
-
-  (check
-      (condition-case
-	  (let ()
-	    (define (doit)
-	      #f)
-	    (assert (doit)))
-	(E (&assertion)
-	   (list (condition? E)
-		 (serious-condition? E)
-		 (assertion-violation? E)
-		 (condition-who E)
-		 (condition-message E)
-		 (condition-irritants E)))
-	(E ()
-	   E))
+      (call/cc
+	  (lambda (escape)
+	    (with-exception-handler
+		(lambda (E)
+		  (escape
+		   (list (condition? E)
+			 (serious-condition? E)
+			 (assertion-violation? E)
+			 (condition-who E)
+			 (condition-message E)
+			 (condition-irritants E))))
+	      (lambda ()
+		(define (doit)
+		  #f)
+		(assert (doit))))))
     => '(#t #t #t assert "failed assertion" ((doit))))
 
   (values))

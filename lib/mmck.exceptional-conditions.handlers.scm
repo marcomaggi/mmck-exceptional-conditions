@@ -32,16 +32,33 @@
 	 (emit-import-library mmck.exceptional-conditions.handlers))
 
 (module (mmck.exceptional-conditions.handlers)
-    ()
+    (raise
+     raise-continuable
+     with-exception-handler
+     predefined-exception-handler
+     error
+     assertion-violation
+     (syntax: assert error))
   (import (scheme)
+	  (only (chicken format)
+		format)
 	  (prefix (only (chicken condition)
-			with-exception-handler)
+			with-exception-handler
+			current-exception-handler
+			get-condition-property)
 		  chicken::)
-	  (mmck exceptional-conditions helpers))
+	  (only (mmck exceptional-conditions helpers)
+		  current-error-port
+		  exit
+		  make-parameter
+		  parameterize
+		  when
+		  unless
+		  debug-print)
+	  (mmck exceptional-conditions condition-objects))
   (import (only (chicken module) reexport))
   (reexport (only (chicken condition)
-		  with-exception-handler
-		  condition-case))
+		  current-exception-handler))
   (import-for-syntax (scheme)
 		     (only (chicken base)
 			   define-record)
@@ -52,7 +69,225 @@
 		     (mmck exceptional-conditions helpers))
 
 
+;;;; current exception handler
 
+(define current-handlers
+  (make-parameter
+      (list
+       (lambda (cnd)
+	 (cond ((warning? cnd)
+		;;When a  "&warning" is  raised with RAISE-CONTINUABLE:  we want to  go on  with the
+		;;execution.
+		(format (current-error-port)
+		  "CHICKEN: uncaught warning: ~a: ~a\n"
+		  (cond ((who-condition? cnd)
+			 (condition-who cnd))
+			((chicken::get-condition-property cnd 'exn 'location)
+			 => (lambda (loc) loc))
+			(else
+			 "unknown location"))
+		  (cond ((message-condition? cnd)
+			 (condition-message cnd))
+			((chicken::get-condition-property cnd 'exn 'message)
+			 => (lambda (msg) msg))
+			(else
+			 "unkown exception cause")))
+		(cond ((irritants-condition? cnd)
+		       (format (current-error-port)
+			 "\t&irritants: ~a\n" (condition-irritants cnd)))
+		      ((chicken::get-condition-property cnd 'exn 'arguments)
+		       => (lambda (args)
+			    (format (current-error-port)
+			      "\targuments: ~a\n" args)))
+		      (else
+		       (format (current-error-port)
+			 "\traised object: ~a\n" cnd)))
+		(values))
+	       (else
+		(format (current-error-port)
+		  "CHICKEN: uncaught exception: ~a: ~a\n"
+		  (cond ((who-condition? cnd)
+			 (condition-who cnd))
+			((chicken::get-condition-property cnd 'exn 'location)
+			 => (lambda (loc) loc))
+			(else
+			 "unknown location"))
+		  (cond ((message-condition? cnd)
+			 (condition-message cnd))
+			((chicken::get-condition-property cnd 'exn 'message)
+			 => (lambda (msg) msg))
+			(else
+			 "unkown exception cause")))
+		(cond ((irritants-condition? cnd)
+		       (format (current-error-port)
+			 "\t&irritants: ~a\n" (condition-irritants cnd)))
+		      ((chicken::get-condition-property cnd 'exn 'arguments)
+		       => (lambda (args)
+			    (format (current-error-port)
+			      "\targuments: ~a\n" args)))
+		      (else
+		       (format (current-error-port)
+			 "\traised object: ~a\n" cnd)))
+		(when (serious-condition? cnd)
+		  (exit 255))
+		(values))))
+       (lambda (cnd)
+	 (format (current-error-port)
+	   "CHICKEN: uncaught exception: ~a: ~a\n"
+	   (cond ((who-condition? cnd)
+		  (condition-who cnd))
+		 ((chicken::get-condition-property cnd 'exn 'location)
+		  => (lambda (loc) loc))
+		 (else
+		  "unknown location"))
+	   (cond ((message-condition? cnd)
+		  (condition-message cnd))
+		 ((chicken::get-condition-property cnd 'exn 'message)
+		  => (lambda (msg) msg))
+		 (else
+		  "unkown exception cause")))
+	 (cond ((irritants-condition? cnd)
+		(format (current-error-port)
+		  "\t&irritants: ~a\n" (condition-irritants cnd)))
+	       ((chicken::get-condition-property cnd 'exn 'arguments)
+		=> (lambda (args)
+		     (format (current-error-port)
+		       "\targuments: ~a\n" args)))
+	       (else
+		(format (current-error-port)
+		  "\traised object: ~a\n" cnd)))
+	 (exit 255))
+       #| end of LIST |# )))
+
+(define (with-exception-handler handler thunk)
+  (unless (procedure? handler)
+    (assertion-violation 'with-exception-handler "expected procedure as HANDLER argument" handler))
+  (unless (procedure? thunk)
+    (assertion-violation 'with-exception-handler "expected procedure as THUNK argument" thunk))
+  (parameterize ((current-handlers (cons handler (current-handlers))))
+    (chicken::with-exception-handler
+	handler
+      (lambda ()
+	(thunk)))
+    #;(thunk)))
+
+(define (predefined-exception-handler obj)
+  (let* ((handlers	(current-handlers))
+	 (head		(car handlers))
+	 (tail		(cdr handlers)))
+    (parameterize ((current-handlers tail))
+      (head obj))))
+
+
+;;;; syntax GUARD
+
+;; (define-syntax guard
+;;   (er-macro-transformer
+;;     (lambda (input-form.stx rename compare)
+;;       (define (main input-form.stx)
+;; 	(match input-form.stx
+;; 	  ((_ (?variable ?cond-clause0 ?cond-clause ...) ?body0 ?body ...)
+;; 	   ))
+
+;;       (apply	;external apply
+;;        (call/cc
+;; 	   (lambda (guard-kont)
+;; 	     (lambda ()
+;;                (with-exception-handler
+;; 		   (lambda (D) ;shell
+;; 		     (apply ;internal apply
+;;                       (call/cc
+;; 			  (lambda (reraise-kont)
+;; 			    (guard-kont
+;; 			     (lambda () ;handler
+;;                                (let ((E D))
+;; 				 (cond ((alpha-condition? E)
+;; 					(do-alpha))
+;;                                        ((beta-condition? E)
+;; 					(do-beta))
+;;                                        (else
+;; 					(reraise-kont
+;; 					 (lambda () ;reraise
+;; 					   (raise-continuable D)))))))
+;; 			     )))))
+;; 		 (lambda () ;body
+;; 		   (dynamic-wind
+;;                        (lambda () (in-guard))
+;;                        (lambda () (form-a))
+;;                        (lambda () (out-guard)))))))))
+
+
+
+
+
+;;;; raising exceptions
+
+(define (raise obj)
+  (let* ((handlers	(current-handlers))
+	 (head		(car handlers))
+	 (tail		(cdr handlers)))
+    (parameterize ((current-handlers tail))
+      (head obj)
+      (raise (condition
+	       (make-non-continuable-violation)
+	       (make-who-condition 'raise)
+	       (make-message-condition "handler returned from non-continuable exception")
+	       (make-irritants-condition (list obj)))))))
+
+(define (raise-continuable obj)
+  (let* ((handlers	(current-handlers))
+	 (head		(car handlers))
+	 (tail		(cdr handlers)))
+    (parameterize ((current-handlers tail))
+      (head obj))))
+
+
+;;;; raising general exceptions
+
+(define (error who message . irritants)
+  ;;R6RS states that there must be an "&irritants" condition.
+  ;;
+  (unless (who-condition-value? who)
+    (assertion-violation 'error "invalid argument WHO" who))
+  (unless (message-condition-value? message)
+    (assertion-violation 'error "invalid argument MESSAGE" message))
+  (raise
+   (if who
+       (condition
+	 (make-error)
+	 (make-who-condition who)
+	 (make-message-condition message)
+	 (make-irritants-condition irritants))
+     (condition
+       (make-error)
+       (make-message-condition message)
+       (make-irritants-condition irritants)))))
+
+(define (assertion-violation who message . irritants)
+  ;;R6RS states that there must be an "&irritants" condition.
+  ;;
+  (unless (who-condition-value? who)
+    (assertion-violation 'assertion-violation "invalid argument WHO" who))
+  (unless (message-condition-value? message)
+    (assertion-violation 'assertion-violation "invalid argument MESSAGE" message))
+  (raise
+   (if who
+       (condition
+	 (make-assertion-violation)
+	 (make-who-condition who)
+	 (make-message-condition message)
+	 (make-irritants-condition irritants))
+     (condition
+       (make-assertion-violation)
+       (make-message-condition message)
+       (make-irritants-condition irritants)))))
+
+(define-syntax assert
+  (syntax-rules ()
+    ((_ ?expr)
+     (or ?expr
+	 (assertion-violation 'assert "failed assertion" (quote ?expr))))
+    ))
 
 
 ;;;; done

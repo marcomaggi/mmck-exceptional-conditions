@@ -28,7 +28,7 @@
 (require-library (mmck exceptional-conditions)
 		 (mmck checks))
 
-(module (test-demo)
+(module (test-condition-objects)
     ()
   (import (scheme)
 	  (chicken base)
@@ -51,14 +51,14 @@
 (parameterize ((check-test-name		'&condition))
 
   (check
-      (let ((C	(make-condition)))
+      (let ((C	(condition)))
 	(values (condition?         C)
 		(message-condition? C)))
     => #t #f)
 
   (check
-      (let ((C	(condition (make-condition)
-			   (make-condition))))
+      (let ((C	(condition (condition)
+			   (condition))))
 	(values (condition?         C)
 		(message-condition? C)))
     => #t #f)
@@ -161,9 +161,10 @@
       (let ((C	(make-assertion-violation)))
 	(values (condition?		C)
 		(serious-condition?	C)
+		(violation?		C)
 		(assertion-violation?	C)
 		(message-condition?	C)))
-    => #t #t #t #f)
+    => #t #t #t #t #f)
 
   #f)
 
@@ -174,9 +175,10 @@
       (let ((C	(make-non-continuable-violation)))
 	(values (condition?			C)
 		(serious-condition?		C)
+		(violation?			C)
 		(non-continuable-violation?	C)
 		(message-condition?		C)))
-    => #t #t #t #f)
+    => #t #t #t #t #f)
 
   #f)
 
@@ -187,9 +189,10 @@
       (let ((C	(make-implementation-restriction-violation)))
 	(values (condition?		C)
 		(serious-condition?	C)
+		(violation?		C)
 		(implementation-restriction-violation?	C)
 		(message-condition?	C)))
-    => #t #t #t #f)
+    => #t #t #t #t #f)
 
   #f)
 
@@ -200,9 +203,10 @@
       (let ((C	(make-lexical-violation)))
 	(values (condition?		C)
 		(serious-condition?	C)
+		(violation?		C)
 		(lexical-violation?	C)
 		(message-condition?	C)))
-    => #t #t #t #f)
+    => #t #t #t #t #f)
 
   #f)
 
@@ -213,9 +217,10 @@
       (let ((C	(make-syntax-violation)))
 	(values (condition?		C)
 		(serious-condition?	C)
+		(violation?		C)
 		(syntax-violation?	C)
 		(message-condition?	C)))
-    => #t #t #t #f)
+    => #t #t #t #t #f)
 
   #f)
 
@@ -226,9 +231,10 @@
       (let ((C	(make-undefined-violation)))
 	(values (condition?		C)
 		(serious-condition?	C)
+		(violation?		C)
 		(undefined-violation?	C)
 		(message-condition?	C)))
-    => #t #t #t #f)
+    => #t #t #t #t #f)
 
   #f)
 

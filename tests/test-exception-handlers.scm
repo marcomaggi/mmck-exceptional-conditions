@@ -39,10 +39,23 @@
 (check-display "*** testing exception handlers\n")
 
 
+;;;; helpers
+
+(define-syntax values->list
+  (syntax-rules ()
+    ((_ ?expr)
+     (call-with-values
+	 (lambda ()
+	   ?expr)
+       (lambda args args)))))
+
+
 (parameterise ((check-test-name		'with-exception-handler))
 
+  ;;No exception return the return value of THUNK.
+  ;;
   (check
-      (call-with-current-continuation
+      (call/cc
 	  (lambda (escape)
 	    (with-exception-handler
 		(lambda (E)
@@ -51,6 +64,35 @@
 		123))))
     => 123)
 
+  ;;No exception return the multiple return values of THUNK.
+  ;;
+  (check
+      (call/cc
+	  (lambda (escape)
+	    (with-exception-handler
+		(lambda (E)
+		  (escape 4 5 6))
+	      (lambda ()
+		(values 1 2 3)))))
+    => 1 2 3)
+
+  ;;No exception return the no values of THUNK.
+  ;;
+  (check
+      (call/cc
+	  (lambda (escape)
+	    (values->list
+	     (with-exception-handler
+		 (lambda (E)
+		   (escape))
+	       (lambda ()
+		 (values))))))
+    => '())
+
+;;; --------------------------------------------------------------------
+
+  ;;Catch exception and escape.
+  ;;
   (check
       (call-with-current-continuation
 	  (lambda (escape)
@@ -63,147 +105,167 @@
 		(error 'me "the message" 1 2 3)))))
     => '(me "the message" (1 2 3)))
 
+  ;;Internal form: catch exception and return.  External form: catch exception and escape.
+  ;;
+  (check
+      (call/cc
+	  (lambda (escape)
+	    (with-exception-handler
+		(lambda (E)
+		  (escape (list (condition? E)
+				(serious-condition? E)
+				(violation? E)
+				(non-continuable-violation? E)
+				(condition-who E)
+				(condition-message E)
+				(let ((C (car (condition-irritants E))))
+				  (vector (condition? C)
+					  (serious-condition? C)
+					  (error? C)
+					  (condition-who C)
+					  (condition-message C)
+					  (condition-irritants C))))))
+	      (lambda ()
+		(with-exception-handler
+		    (lambda (E)
+		      123)
+		  (lambda ()
+		    (raise (condition (make-error)
+				      (make-who-condition 'me)
+				      (make-message-condition "the message")
+				      (make-irritants-condition '(1 2 3))))))))))
+    => '(#t #t #t #t raise "handler returned from non-continuable exception"
+	    #(#t #t #t me "the message" (1 2 3))))
+
+;;; --------------------------------------------------------------------
+
+  ;;Nested uses: raising a non-condition object to show the sequence of handlers.
+  ;;
+  (check
+      (call/cc
+	  (lambda (escape)
+	    (with-exception-handler
+		(lambda (A)
+		  (escape (cons 'A A)))
+	      (lambda ()
+		(with-exception-handler
+		    (lambda (B)
+		      (raise (cons 'B B)))
+		  (lambda ()
+		    (with-exception-handler
+			(lambda (C)
+			  (raise (cons 'C C)))
+		      (lambda ()
+			(raise 123)))))))))
+    => '(A B C . 123))
+
+  ;;Nested uses.
+  ;;
+  (check
+      (call/cc
+	  (lambda (escape)
+	    (with-exception-handler
+		(lambda (A)
+		  (escape (list (condition? A)
+				(serious-condition? A)
+				(error? A)
+				(condition-who A)
+				(condition-message A)
+				(condition-irritants A))))
+	      (lambda ()
+		(with-exception-handler
+		    (lambda (B)
+		      (raise B))
+		  (lambda ()
+		    (with-exception-handler
+			(lambda (C)
+			  (raise C))
+		      (lambda ()
+			(raise
+			 (condition (make-error)
+				    (make-who-condition 'me)
+				    (make-message-condition "the message")
+				    (make-irritants-condition '(1 2 3))))))))))))
+    => '(#t #t #t me "the message" (1 2 3)))
+
   (values))
 
 
-#;(parameterise ((check-test-name		'condition-case-equiv))
+(parameterise ((check-test-name		'raise))
 
-  (define-syntax condition-case-clause
-    (syntax-rules ()
-      ((_ ?escape ?kindvar ?cndvar)
-       (raise ?cndvar))
-
-      ((_ ?escape ?kindvar ?cndvar (() ?body0 ?body ...) ?clause ...)
-       (?escape (begin ?body0 ?body ...)))
-
-      ((_ ?escape ?kindvar ?cndvar (() ?body0 ?body ...) ?clause ...)
-       (?escape (let ((?cndvar1 ?cndvar))
-		  ?body0 ?body ...)))
-
-      ((_ ?escape ?kindvar ?cndvar (?kind ?body0 ?body ...) ?clause ...)
-       (if (memv ?kind ?kindvar)
-	   (?escape (begin ?body0 ?body ...))
-	 (condition-case-clause ?escape ?kindvar ?cndvar ?clause ...)))
-
-      ((_ ?escape ?kindvar ?cndvar (?cndvar1 ?kind ?body0 ?body ...) ?clause ...)
-       (if (memv ?kind ?kindvar)
-	   (?escape (let ((?cndvar1 ?cndvar))
-		      ?body0 ?body ...))
-	 (condition-case-clause ?escape ?kindvar ?cndvar ?clause ...)))
-      ))
-
-  (define-syntax condition-case-equiv
-    (syntax-rules ()
-      ((_ ?expr ?clause0 ?clause ...)
-       (call/cc
-	   (lambda (escape)
-	     (with-exception-handler
-		 (lambda (cndvar)
-		   (let ((kinds (condition-kinds cndvar)))
-		     (condition-case-clause escape kinds cndvar ?clause0 ?clause ...)))
-	       (lambda ()
-		 ?expr)))))
-      ))
-
-;;; --------------------------------------------------------------------
-;;; no vars
-
+  ;;Returning from a handler.
+  ;;
   (check
-      (condition-case-equiv
-	  (raise (make-error))
-	(()
-	 'here))
-    => 'here)
-
-  (check
-      (condition-case-equiv
-	  (raise (make-error))
-	((&undefined)
-	 'undefined)
-	((&error)
-	 'error)
-	(()
-	 'else))
-    => 'error)
-
-  (check
-      (condition-case-equiv
-	  (raise (make-who-condition 'me))
-	((&undefined)
-	 'undefined)
-	((&error)
-	 'error)
-	(()
-	 'else))
-    => 'else)
+      (let ((C (call/cc
+		   (lambda (escape)
+		     (with-exception-handler
+			 escape
+		       (lambda ()
+			 (with-exception-handler
+			     (lambda (obj) obj)
+			   (lambda ()
+			     (raise 123)))))))))
+	(values (condition? C)
+		(serious-condition? C)
+		(violation? C)
+		(non-continuable-violation? C)
+		(condition-message C)
+		(condition-irritants C)))
+    => #t #t #t #t "handler returned from non-continuable exception" '(123))
 
   (values))
 
 
-(parameterise ((check-test-name		'condition-case))
+(parameterise ((check-test-name		'raise-continuable))
 
-;;; no vars
-
+  ;;Returning from a handler.
+  ;;
   (check
-      (condition-case
-	  (raise (make-error))
-	(()
-	 'here))
-    => 'here)
+      (with-exception-handler
+	  ;;This handler returns!
+	  (lambda (obj)
+	    (values 'obj obj))
+	(lambda ()
+	  (raise-continuable 123)))
+    => 'obj 123)
 
+  ;;Nested handlers.
+  ;;
   (check
-      (condition-case
-	  (raise (make-error))
-	((&warning)
-	 'warning)
-	((&error)
-	 'error)
-	(()
-	 'else))
-    => 'error)
+      (call/cc
+	  (lambda (escape)
+	    (with-exception-handler
+		(lambda (A)
+		  (escape (cons 'A A)))
+	      (lambda ()
+		(with-exception-handler
+		    (lambda (B)
+		      (raise (cons 'B B)))
+		  (lambda ()
+		    (with-exception-handler
+			(lambda (C)
+			  (raise (cons 'C C)))
+		      (lambda ()
+			(raise-continuable 123)))))))))
+    => '(A B C . 123))
 
+  (values))
+
+
+(parameterise ((check-test-name		'warnings))
+
+  ;;When a "&warning"  is raised and uncaught:  the default exception handlers will  print a message
+  ;;to the CURRENT-ERROR-PORT and continue.
+  ;;
   (check
-      (condition-case
-	  (raise (make-who-condition 'me))
-	((&warning)
-	 'warning)
-	((&error)
-	 'error)
-	(()
-	 'else))
-    => 'else)
-
-;;; --------------------------------------------------------------------
-;;; no vars
-
-  (check
-      (condition-case
-	  (raise (make-error))
-	(var ()
-	     (list 'here (condition-kinds var))))
-    => '(here (&error &serious &condition)))
-
-  (check
-      (condition-case
-	  (raise (make-error))
-	((&warning)
-	 'warning)
-	(var (&error)
-	     (list 'error (condition-kinds var)))
-	(()
-	 'else))
-    => '(error (&error &serious &condition)))
-
-  (check
-      (condition-case
-	  (raise (make-warning))
-	((&syntax)
-	 'syntax)
-	((&error)
-	 'error)
-	(var ()
-	     (list 'else (condition-kinds var))))
-    => '(else (&warning &condition)))
+      (begin
+	(raise-continuable
+	 (condition (make-warning)
+		    (make-who-condition 'me)
+		    (make-message-condition "the message")
+		    (make-irritants-condition '(1 2 3))))
+	123)
+    => 123)
 
   (values))
 
