@@ -253,12 +253,12 @@
 (define-syntax unwind-protect
   (er-macro-transformer
     (lambda (input-form.stx rename compare)
-      (define %with-unwind-protection	(rename 'with-unwind-protection))
+      (define %with-unwind-handler	(rename 'with-unwind-handler))
       (define %lambda			(rename 'lambda))
       (define %why			(rename 'why))
       (match input-form.stx
 	((_ ?body ?cleanup0 ?cleanup* ...)
-	 `(,%with-unwind-protection
+	 `(,%with-unwind-handler
 	   (,%lambda (,%why) ,?cleanup0 . ,?cleanup*)
 	   (,%lambda () ,?body)))
 	(_

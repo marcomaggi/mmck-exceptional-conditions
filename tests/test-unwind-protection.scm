@@ -87,7 +87,7 @@
   #f)
 
 
-#;(parameterise ((check-test-name	'non-continuable-exceptions-from-thunk))
+(parameterise ((check-test-name	'non-continuable-exceptions-from-thunk))
 
   (check	;show the mechanism of non-continuable exceptions
       (call/cc
@@ -283,7 +283,7 @@
   #f)
 
 
-#;(parameterise ((check-test-name	'continuable-exceptions-from-thunk))
+(parameterise ((check-test-name	'continuable-exceptions-from-thunk))
 
   (check	;show the mechanism of continuable exceptions
       (with-exception-handler
@@ -451,7 +451,7 @@
   #f)
 
 
-#;(parameterise ((check-test-name	'exceptions-from-cleanup))
+(parameterise ((check-test-name	'exceptions-from-cleanup))
 
   (check
       (call/cc
@@ -487,7 +487,7 @@
   #f)
 
 
-#;(parameterise ((check-test-name	'non-local-exit-with-return))
+(parameterise ((check-test-name	'non-local-exit-with-return))
 
   (check	;return in body
       (with-result
@@ -520,48 +520,50 @@
   #f)
 
 
-#;(parameterise ((check-test-name	'non-local-exit-standard-do-loop))
+;;CHICKEN's syntax DO does not support cleanups.
+;;
+;; (parameterise ((check-test-name	'non-local-exit-standard-do-loop))
 
-  (check 	;break in body
-      (with-result
-	(define y #f)
-	(define x
-	  (do ((x 3 (-- x)))
-	      ((zero? x)
-	       (add-result 'do-exit)
-	       (values x y))
-	    (with-unwind-handler
-		(lambda (why)
-		  (add-result 'cleanup-in)
-		  (set! y #t)
-		  (add-result 'cleanup-out))
-	      (lambda ()
-		(add-result 'thunk-in)
-		(break x)
-		(add-result 'thunk-out)))))
-	(values x y))
-    => '(3 #t (thunk-in cleanup-in cleanup-out)))
+;;   (check 	;break in body
+;;       (with-result
+;; 	(define y #f)
+;; 	(define x
+;; 	  (do ((x 3 (+ -1 x)))
+;; 	      ((zero? x)
+;; 	       (add-result 'do-exit)
+;; 	       (values x y))
+;; 	    (with-unwind-handler
+;; 		(lambda (why)
+;; 		  (add-result 'cleanup-in)
+;; 		  (set! y #t)
+;; 		  (add-result 'cleanup-out))
+;; 	      (lambda ()
+;; 		(add-result 'thunk-in)
+;; 		(break x)
+;; 		(add-result 'thunk-out)))))
+;; 	(values x y))
+;;     => '(3 #t (thunk-in cleanup-in cleanup-out)))
 
-  (check	;continue in body
-      (with-result
-	(do ((x 3 (-- x))
-	     (y 0))
-	    ((zero? x)
-	     (values x y))
-	  (with-unwind-handler
-	      (lambda (why)
-		(add-result 'cleanup)
-		(++ y))
-	    (lambda ()
-	      (add-result 'thunk-in)
-	      (continue)
-	      (add-result 'thunk-out)))))
-    => '(0 3 (thunk-in cleanup thunk-in cleanup thunk-in cleanup)))
+;;   (check	;continue in body
+;;       (with-result
+;; 	(do ((x 3 (+ -1 x))
+;; 	     (y 0))
+;; 	    ((zero? x)
+;; 	     (values x y))
+;; 	  (with-unwind-handler
+;; 	      (lambda (why)
+;; 		(add-result 'cleanup)
+;; 		(set! y (+ +1 y)))
+;; 	    (lambda ()
+;; 	      (add-result 'thunk-in)
+;; 	      (continue)
+;; 	      (add-result 'thunk-out)))))
+;;     => '(0 3 (thunk-in cleanup thunk-in cleanup thunk-in cleanup)))
 
-  #f)
+;;   #f)
 
 
-#;(parameterise ((check-test-name	'reentering-continuations))
+(parameterise ((check-test-name	'reentering-continuations))
 
   (check	;reentering continuation
       (with-result
@@ -589,7 +591,7 @@
       (internal-body
 	(define order '())
 	(define (add obj)
-	  (set-cons! order obj))
+	  (set! order (cons obj order)))
 
 	(define rv
 	  (guard (E ((non-reinstatable-violation? E)
@@ -663,7 +665,7 @@
   #t)
 
 
-#;(parameterise ((check-test-name	'dynamic-environment))
+(parameterise ((check-test-name	'dynamic-environment))
 
   (define parm
     (make-parameter #f))
@@ -672,7 +674,7 @@
 
   (check
       (with-result
-	#;(parameterise ((parm 'parm))
+	(parameterize ((parm 'parm))
 	  (with-unwind-handler
 	      (lambda (why)
 		(add-result 'cleanup-in)
@@ -689,14 +691,14 @@
   ;;
   (check
       (with-result
-	#;(parameterise ((parm 'outer-parm))
+	(parameterize ((parm 'outer-parm))
 	  (with-unwind-handler
 	      (lambda (why)
 		(add-result 'cleanup-in)
 		(add-result (parm))
 		(add-result 'cleanup-out))
 	    (lambda ()
-	      #;(parameterise ((parm 'inner-parm))
+	      (parameterize ((parm 'inner-parm))
 		(add-result 'thunk-in)
 		(add-result (parm))
 		(add-result 'thunk-out)
@@ -709,14 +711,14 @@
   (check
       (with-result
 	(returnable
-	  #;(parameterise ((parm 'outer-parm))
+	  (parameterize ((parm 'outer-parm))
 	    (with-unwind-handler
 		(lambda (why)
 		  (add-result 'cleanup-in)
 		  (add-result (parm))
 		  (add-result 'cleanup-out))
 	      (lambda ()
-		#;(parameterise ((parm 'inner-parm))
+		(parameterize ((parm 'inner-parm))
 		  (add-result 'thunk-in)
 		  (add-result (parm))
 		  (return 2)
@@ -729,9 +731,9 @@
 
   (check
       (with-result
-	#;(parameterise ((parm 'outer-parm))
+	(parameterize ((parm 'outer-parm))
 	  (returnable
-	    #;(parameterise ((parm 'inner-parm))
+	    (parameterize ((parm 'inner-parm))
 	      (with-unwind-handler
 		  (lambda (why)
 		    (add-result 'cleanup-in)
@@ -750,7 +752,7 @@
 
   (check
       (with-result
-	#;(parameterise ((parm 'outer-parm))
+	(parameterize ((parm 'outer-parm))
 	  (guard (E ((begin
 		       (add-result 'guard-test-in)
 		       (add-result (parm))
@@ -760,7 +762,7 @@
 		     (add-result (parm))
 		     (add-result 'guard-expr-out)
 		     E))
-	    #;(parameterise ((parm 'inner-parm))
+	    (parameterize ((parm 'inner-parm))
 	      (with-unwind-handler
 		  (lambda (why)
 		    (add-result 'cleanup-in)
@@ -780,7 +782,7 @@
   #t)
 
 
-#;(parameterise ((check-test-name	'unwinding-escape))
+(parameterise ((check-test-name	'unwinding-escape))
 
   ;;Standard CALL/CC behaviour: the unwind handler is not called.
   ;;
@@ -862,14 +864,14 @@
 		(call/cc
 		    (lambda (again)
 		      (set! again-proc again)))
-		(escape)))
-	  (again-proc)))
+		(escape 1)))
+	  (again-proc 1)))
     => #t)
 
   #t)
 
 
-#;(parameterise ((check-test-name	'unwind-handler-argument))
+(parameterise ((check-test-name	'unwind-handler-argument))
 
   (check	;normal return
       (with-result
@@ -903,7 +905,7 @@
   #t)
 
 
-#;(parameterise ((check-test-name	'unwind-protect))
+(parameterise ((check-test-name	'unwind-protect))
 
   (check
       (with-result
@@ -964,7 +966,7 @@
   #t)
 
 
-#;(parameterise ((check-test-name	'exceptions-from-guards))
+(parameterise ((check-test-name	'exceptions-from-guards))
 
   ;;Raising an exception from an exception handler: the unwind handler is called, but
   ;;the original exception is lost.
@@ -1033,7 +1035,7 @@
   #t)
 
 
-#;(parameterise ((check-test-name	'exceptions-from-guards))
+(parameterise ((check-test-name	'exceptions-from-guards))
 
 ;;;What  happens when  we  raise an  exception  from the  in-guard  and out-guard  of
 ;;;DYNAMIC-WIND?
@@ -1667,7 +1669,7 @@
 			(add-result 'middle/thunk-out))
 		      (lambda ()
 			(add-result 'middle/inner-out-guard/raise)
-			(++ counter)
+			(set! counter (+ +1 counter))
 			(when (= 2 counter)
 			  (raise 3)))))))
 	    (lambda ()
