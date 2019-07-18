@@ -858,6 +858,7 @@ of the call to @func{raise-continuable}.
 @end itemize
 
 
+@anchor{with-exception-handler}
 @defun with-exception-handler @var{handler} @var{thunk}
 The argument @var{handler} must be a procedure and should accept one argument.  The argument
 @var{thunk} must be a procedure that accepts zero arguments.  The @func{with-exception-handler}
@@ -885,6 +886,7 @@ is that of the @syntax{guard} expression.
 @end deffn
 
 
+@anchor{raise}
 @defun raise @var{obj}
 Raise a @emph{non--continuable exception} by invoking the current exception handler on @var{obj}.
 
@@ -938,6 +940,7 @@ is raised in the same dynamic environment as the handler.
 @end defun
 
 
+@anchor{raise-continuable}
 @defun raise-continuable @var{obj}
 Raise a @emph{continuable exception} by invoking the current exception handler on @var{obj}.  The
 handler is called with a continuation that is equivalent to the continuation of the call to
@@ -1162,6 +1165,9 @@ them and convert them:
 @menu
 * syntaxes returnable::         Early return from code blocks.
 * syntaxes unwind::             Unwind protection.
+* syntaxes compensations::      Compensation stacks.
+* syntaxes try::                The @syntax{try} syntax.
+* syntaxes blocking::           Blocking exceptions.
 @end menu
 
 @c page
@@ -1194,6 +1200,7 @@ arguments.  Being a fluid syntax: it is possible to rebind this keyword in custo
 @end deffn
 
 
+@anchor{returnable}
 @deffn Syntax returnable @qvaro{body} @qvar{body} @dots{}
 Like @func{begin}, but allow the use of the keyword @func{return} to return values to the enclosing
 continuation.
@@ -1229,6 +1236,1245 @@ Usage examples:
 @section Unwind protection
 
 
+Unwind--protection allows operations to be performed synchronously with respect to the dynamic
+extent of a call to thunk; the mechanism is sophisticated because there are multiple, sophisticated
+ways to exit the dynamic extent of a function call.  The typical application is to release
+asynchronous resources, like input/output ports and database connections.
+
+To understand the unwind--protection mechanism we must understand the concepts ``dynamic extent of a
+function call'' and ``dynamic environment'' as defined by the Scheme standard.
+
+The unwind--protection mechanism described here is used by @value{PACKAGE} in: the implementation of
+compensations (@pxref{syntaxes compensations}); the implementation of the syntax @syntax{try}
+(@pxref{syntaxes try}).
+
+@quotation
+@strong{NOTE} The unwind protection mechanism may misbehave in some cases, so do not trust it
+blindly (@pxref{syntaxes unwind problems}).
+@end quotation
+
+@menu
+* syntaxes unwind intro::       Introduction to the unwind protection
+                                mechanism.
+* syntaxes unwind syntaxes::    Unwind-protection syntaxes.
+* syntaxes unwind dynamic::     On the meaning of dynamic extent termination.
+* syntaxes unwind except 1::    Raising non-continuable exceptions from
+                                the thunk.
+* syntaxes unwind except 2::    Raising continuable exceptions from the
+                                thunk.
+* syntaxes unwind except 3::    Raising exceptions from the unwind handler.
+* syntaxes unwind returnable::  Use with returnable bodies.
+@c * syntaxes unwind coroutines::  Use with coroutines.
+* syntaxes unwind reenter::     Handling reentering continuations.
+* syntaxes unwind dyn-env::     Clean-up thunks and the dynamic environment.
+* syntaxes unwind problems::    Known problems.
+* syntaxes unwind call/cc::     Unwinding @func{call/cc}.
+@end menu
+
+@c page
+@node syntaxes unwind intro
+@subsection Introduction to the unwind--protection mechanism
+
+
+The syntax @syntax{with-unwind-handler} implements the core mechanism.  @syntax{unwind-protect}
+offers a syntax similar to the one of the Common Lisp macro with the same name.  The former is meant
+to be used as follows:
+
+@lisp
+(let ((port (open-output-file "file.ext")))
+  (with-unwind-handler
+      (lambda (why)
+        (close-output-port port))
+    (lambda ()
+      (put-bytevector port '#ve(ascii "ciao")))))
+@end lisp
+
+@noindent
+and the latter as follows:
+
+@lisp
+(let ((port (open-output-file "file.ext")))
+  (unwind-protect
+      (put-bytevector port '#ve(ascii "ciao"))
+    (close-output-port port)))
+@end lisp
+
+@noindent
+first we allocate a resource (in this case the @var{port}); then we use it in the body forms;
+finally we release it in the clean--up forms.
+
+When using the mechanism:
+
+@itemize
+@item
+We have to decide if we trust our code not to raise exceptions while evaluating the in--guard and
+out--guard thunks of @func{dynamic-wind} calls.  These would be nasty errors, because the dynamic
+environment would get corrupted and recovering correctly might be impossible; so we must
+@strong{really} write and debug such in--guard and out--guard thunks with care.
+
+@item
+We have to decide if we trust our code not to raise a second exception while serving a first
+exception in an error handler.  Raising a continuable exception is fine only if we actually
+continue.  Exceptions while handling exceptions are a hard problem to solve in every language; the
+rough solution is to block exceptions raised by exception handlers:
+
+@lisp
+(with-exception-handler
+    (lambda (E)
+      (with-blocked-exceptions
+        (lambda ()
+          (handle E))))
+  (lambda ()
+    (do-something-useful)))
+@end lisp
+
+@noindent
+but it is not very satisfying.  Another possibility is:
+
+@lisp
+(define-condition-type &originally-raised
+    &condition
+  make-originally-raised-condition
+  originally-raised-condition?
+  (object originally-raised-object))
+
+(with-exception-handler
+    (lambda (E)
+      (with-exception-handler
+          (lambda (X)
+            (raise-continuable
+              (condition X
+                (make-originally-raised-condition E))))
+        (lambda ()
+          (handle E))))
+  (lambda ()
+    (do-something-useful)))
+@end lisp
+@end itemize
+
+If the bodacious answer to both the decisions is ``We trust'': we can nest at will uses of
+@syntax{with-unwind-handler}:
+
+@lisp
+(define (outer)
+  (with-unwind-handler
+      (lambda (why)
+        (outer-unwind-handler))
+    (lambda ()
+      (do-something-useful)
+      (inner))))
+
+(define (inner)
+  (with-unwind-handler
+      (lambda (why)
+        (inner-unwind-handler))
+    (lambda ()
+      (do-some-other-useful-thing))))
+
+(outer)
+@end lisp
+
+@noindent
+@strong{beware}: unwind handlers are evaluated in the dynamic environment of the use of
+@syntax{with-unwind-handler}.
+
+Otherwise, we must avoid error handlers to cause the execution flow to cross an unwind protection
+boundary; we can do it by using compensations and the standard @syntax{guard} syntax:
+
+@lisp
+(define (outer)
+  (push-compensation-thunk
+    (lambda ()
+      (outer-unwind-handler)))
+  (do-something-useful)
+  (inner))
+
+(define (inner)
+  (push-compensation-thunk
+    (lambda ()
+      (inner-unwind-handler)))
+  (do-some-other-useful-thing))
+
+(with-compensations
+  (with-blocked-exceptions
+    (lambda ()
+      (guard (E ((type-one-error? E)
+                 (handle E))
+                (else
+                 (do-something-dammit!!!)))
+        (outer)))))
+@end lisp
+
+@noindent
+or by using the compensations and the @syntax{try} syntax defined by @value{PACKAGE}:
+
+@lisp
+(define (outer)
+  (push-compensation-thunk
+    (lambda ()
+      (outer-unwind-handler)))
+  (do-something-useful)
+  (inner))
+
+(define (inner)
+  (push-compensation-thunk
+    (lambda ()
+      (inner-unwind-handler)))
+  (do-some-other-useful-thing))
+
+(with-compensations
+  (with-blocked-exceptions
+    (lambda ()
+      (try
+          (outer)
+        (catch E
+          ((&type-one)
+           (handle E))
+          (else
+           (do-something-dammit!!!)))))))
+@end lisp
+
+@noindent
+@strong{beware}: compensation handlers are evaluated in the dynamic environment of the use of
+@syntax{with-compensations}.
+
+@c page
+@node syntaxes unwind syntaxes
+@subsection Unwind--protection syntaxes
+
+
+@deffn Syntax with-unwind-handler @qvar{unwind-handler} @qvar{thunk}
+Call @qvar{thunk} and then, when the dynamic extent of the call @strong{terminates}, call the
+procedure @qvar{unwind-handler}.  When @qvar{thunk} performs a normal return: the return values of
+@qvar{thunk} become the return values of @func{with-unwind-handler}.
+
+When called: @qvar{unwind-handler} is applied to a Scheme symbol representing the cause of the call:
+@samp{return}, @samp{escape}, @samp{exception}.  The argument @qvar{unwind-handler} comes before the
+argument @qvar{thunk} for uniformity with @func{with-exception-handler};
+@ref{with-exception-handler} for details.
+
+Notice that a function tail--call in @qvar{thunk} is @strong{not} a tail--call for
+@syntax{with-unwind-handler}.
+@end deffn
+
+
+@deffn Syntax unwind-protect @qvar{body} @qvaro{cleanup} @qvar{cleanup} ...
+Simple wrapper for @syntax{with-unwind-handler} that provides a syntax similar to that of Common
+Lisp's macro.  It is expanded to:
+
+@example
+(with-unwind-handler
+    (lambda (dummy) @qvaro{cleanup} @qvar{cleanup} ...)
+  (lambda () @qvar{body}))
+@end example
+@end deffn
+
+@c page
+@node syntaxes unwind dynamic
+@subsection On the meaning of dynamic extent termination
+
+
+The concept of dynamic extent @dfn{termination} is defined by @value{PACKAGE}'s unwind--protection
+mechanism and it is not a standard Scheme concept.  In this discussion, we consider the syntax use:
+
+@example
+(with-unwind-handler @qvar{unwind-handler} @qvar{thunk})
+@end example
+
+@noindent
+the procedure @qvar{unwind-handler} is called when the dynamic extent of the invocation of
+@qvar{thunk} terminates; dynamic extent @strong{termination} is different from dynamic extent
+@strong{exiting} as determined by @func{dynamic-wind}.  When the execution flow exits the dynamic
+extent of a function call: such extent might also terminate, but not all the exits are also
+terminations.
+
+The dynamic extent of a call to @qvar{thunk} @strong{is} terminated, and so @qvar{unwind-handler}
+@strong{is} invoked, when:
+
+@itemize
+@item
+@qvar{thunk} performs a normal return.  @qvar{unwind-handler} is applied to the symbol
+@samp{return}.
+
+@item
+@qvar{thunk} raises a continuable or non--continuable exception that is intercepted by a use of
+@syntax{guard}, but only when a clause of @syntax{guard} has a test expression returning non--false.
+
+@lisp
+(guard (E (@qvar{test} @qvar{expr}))
+  (with-unwind-handler @qvar{unwind-handler} @qvar{thunk}))
+@end lisp
+
+This is what happens:
+
+@enumerate
+@item
+The clause's @qvar{test} expression is evaluated in the dynamic environment of the use of
+@syntax{guard} and it returns non--false.
+
+@item
+@qvar{unwind-handler} is applied to the symbol @samp{exception}, in the dynamic environment of the
+use of @syntax{with-unwind-handler}, and its return values discarded.
+
+@item
+The clause's @qvar{expr} is evaluated in the dynamic environment of the use of @syntax{guard} and
+its return values are returned to the continuation of @syntax{guard}.
+@end enumerate
+
+@item
+@qvar{thunk} executes a use of the syntax @syntax{return}, as defined by the library @library{mmck
+exceptional-condition}, to escape from a form that encloses an unwind--protection syntax.
+@qvar{unwind-handler} is applied to the symbol @samp{escape}.
+
+As bound by the @syntax{returnable}: the syntax @syntax{return} reinstates a continuation at the
+beginning or outside of @syntax{returnable} and performs special operations to terminate the dynamic
+extent of the call to @qvar{thunk} in an unwind--protection form.
+@end itemize
+
+@c ------------------------------------------------------------------------
+
+The dynamic extent of a call to @qvar{thunk} is @strong{not} terminated, and so
+@qvar{unwind-handler} is @strong{not} invoked, when:
+
+@itemize
+@item
+@qvar{thunk} raises a continuable exception by calling @func{raise-continuable}, and such call
+performs a normal return to @qvar{thunk}.
+
+@item
+@qvar{thunk} raises a continuable or non--continuable exception and an exception handler terminates
+the process (for example by calling @func{exit}).
+
+@c @item
+@c The unwind--protection syntax is used by a coroutine and @func{yield} is called from within
+@c @qvar{thunk} to hand control to another coroutine.
+
+@item
+An escape procedure is called from within @qvar{thunk} to reinstate a continuation outside
+@qvar{thunk}, and the call to the escape procedure is @strong{not} interfaced with the
+unwind--protection mechanism to terminate the dynamic extent of the call to @qvar{thunk}.
+@end itemize
+
+@c ------------------------------------------------------------------------
+
+About the termination of the dynamic extent of @qvar{thunk}, we must acknowledge that:
+
+@itemize
+@item
+There is @strong{no} guarantee that: after exiting (without terminating) the dynamic extent of
+@qvar{thunk} by reinstating a continuation, such extent will be reentered later and continue to
+termination.
+
+@item
+If the dynamic extent of @qvar{thunk} is terminated and an attempt to reenter @qvar{thunk} is
+performed: an exception is raised with compound condition object containing a
+@condition{non-reinstatable} component (@pxref{&non-reinstatable}).
+
+@item
+Obviously, if a call to @qvar{unwind-handler} raises an exception: the clean--up operations
+performed by @qvar{unwind-handler} may fail, in whole or in part, possibly leaving behind unreleased
+resources.
+
+@item
+If the call to @qvar{thunk} raises an exception and a use of @syntax{guard} intercepts it: if a test
+expression in a clause of @syntax{guard} raises an exception, the @qvar{unwind-handler} may not be
+called.
+
+While it is possible to @func{raise} any object: it is better to always raise a condition object
+(possibly compound), so that the test expressions in @syntax{guard} uses can just be condition
+object type predicates; such predicates never raise exceptions.
+@end itemize
+
+@c ------------------------------------------------------------------------
+
+If @qvar{unwind-handler} raises an exception: such exception is blocked and discarded.
+
+@c page
+@node syntaxes unwind except 1
+@subsection Raising non--continuable exceptions from the thunk
+
+
+A non--continuable exception is raised with @func{raise}, which can be applied to any object; the
+argument to @func{raise} becomes the ``raised object''.  The purpose of raising a non--continuable
+exception is to cause the application of a function, the current exception handler, to the raised
+object; the exception handler is called in the dynamic environment of the call to @func{raise}, with
+the exception that the ``current exception handler'' is the one that was previously installed
+(@pxref{raise} for a precise description of the operation).
+
+The execution flow is @strong{not} meant return to the caller of @func{raise}, so the exception
+handler has only two options:
+
+@enumerate
+@item
+Reinstate a previously saved continuation to jump out of the dynamic environment in which the
+exception was raised.  The following example shows the basic mechanism:
+
+@lisp
+(call/cc
+    (lambda (escape)
+      (with-exception-handler
+          escape
+        (lambda ()
+          (raise 1)))))
+@result{} 1
+@end lisp
+
+@noindent
+Reinstating a continuation to jump out of the exception handler is what the standard @syntax{guard}
+syntax does when it handles an exception; @syntax{guard} does more than this.
+
+@item
+Raise the exception again, causing the invocation of the upper level exception handler.  The
+following example shows the basic mechanism:
+
+@lisp
+(call/cc
+    (lambda (escape)
+      (with-exception-handler
+          escape
+        (lambda ()
+          (with-exception-handler
+              (lambda (E)
+                (raise E))
+            (lambda ()
+              (raise 1)))))))
+@result{} 1
+@end lisp
+@end enumerate
+
+@c ------------------------------------------------------------------------
+
+@subsubheading Handling exceptions by escaping
+
+This is @strong{not} the correct way of interfacing with the unwind--protection mechanism.  In the
+following example we see that escaping from the exception handler skips the call to the
+@qvar{unwind-handler}.
+
+@lisp
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(with-result
+  (call/cc
+      (lambda (escape)
+        (with-exception-handler
+            (lambda (E)
+              (add-result 'exception-handler)
+              (escape E))
+          (lambda ()
+            (with-unwind-handler
+                (lambda (why)
+                  (add-result 'cleanup))
+              (lambda ()
+                (add-result 'thunk-in)
+                (raise 123)
+                (add-result 'thunk-out))))))))
+@result{} (123 (thunk-in exception-handler))
+@end lisp
+
+@c ------------------------------------------------------------------------
+
+@subsubheading Handling exceptions with @syntax{guard}
+
+This is the correct way of interfacing with the unwind--protection mechanism.
+
+In the following example: the @qvar{thunk} raises a non--continuable exception, which is caught by
+the @syntax{else} clause of a @syntax{guard} use; this is equivalent to escaping from an exception
+handler, but it does evaluate the @qvar{unwind-handler}.  We can see the forms evaluation order.
+
+@lisp
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(with-result
+  (guard (E (else
+             (add-result 'guard-else)
+             E))
+    (with-unwind-handler
+        (lambda (why)
+          (add-result 'cleanup))
+      (lambda ()
+        (add-result 'thunk-in)
+        (raise 2)
+        (add-result 'thunk-out)
+        1))))
+@result{} (2 (thunk-in cleanup guard-else))
+@end lisp
+
+In the following example: the @qvar{thunk} raises a non--continuable exception, which is caught by
+the clause of a @syntax{guard} use; the clause has test and expression.  We can see the forms
+evaluation order.
+
+@lisp
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(with-result
+  (guard (E ((begin
+               (add-result 'guard-test)
+               #t)
+             (add-result 'guard-expr)
+             E))
+    (with-unwind-handler
+        (lambda (why)
+          (add-result 'cleanup))
+      (lambda ()
+        (add-result 'thunk-in)
+        (raise 2)
+        (add-result 'thunk-out)
+        1))))
+@result{} (2 (thunk-in guard-test cleanup guard-expr))
+@end lisp
+
+The following example with two nested @syntax{guard} uses and two nested @func{dynamic-wind} calls,
+makes it even more clear the sequence of forms evaluation.  The clause of the inner @syntax{guard}
+has test expression returning @false{}, so the exception is re--raised with
+@func{raise-continuable}.
+
+@lisp
+(import (only (mmck checks)
+        with-result
+        add-result))
+
+(with-result
+  (guard (E ((begin
+               (add-result 'outer-guard-test)
+               #t)
+             (add-result 'outer-guard-expr)
+             E))
+    (guard (E ((begin
+                 (add-result 'inner-guard-test)
+                 #f)
+               (add-result 'inner-guard-expr)
+               E))
+      (dynamic-wind
+          (lambda ()
+            (add-result 'outer-before))
+          (lambda ()
+            (with-unwind-handler
+                (lambda (why)
+                  (add-result 'cleanup))
+              (lambda ()
+                (dynamic-wind
+                    (lambda ()
+                      (add-result 'inner-before))
+                    (lambda ()
+                      (add-result 'thunk-in)
+                      (raise 2)
+                      (add-result 'thunk-out)
+                      1)
+                    (lambda ()
+                      (add-result 'inner-after))))))
+          (lambda ()
+            (add-result 'outer-after))))))
+@result{} (2 (outer-before inner-before thunk-in inner-after outer-after
+       inner-guard-test
+       outer-before inner-before inner-after outer-after
+       outer-guard-test
+       outer-before inner-before inner-after cleanup outer-after
+       outer-guard-expr))
+@end lisp
+
+Let's describe the sequence of operations:
+
+@table @code
+@item outer-before inner-before thunk-in
+Everything goes fine until the @qvar{thunk} reaches @code{thunk-in}.
+
+@item *
+The @qvar{thunk} raises an exception.  The exception handler of the inner @syntax{guard} is applied
+to the raised object.
+
+@item inner-after outer-after
+The continuation of the inner @syntax{guard} use is reinstated, the dynamic extent of the call to
+@qvar{thunk} is exited: the dynamic environment unwinds.
+
+@item inner-guard-test
+The clause test expression of the inner @syntax{guard} is evaluated in the dynamic environment of
+the @syntax{guard} use: it returns @false{}.
+
+@item outer-before inner-before
+The continuation of the inner @syntax{guard} exception handler is reinstated, the dynamic extent of
+the call to @qvar{thunk} is reentered: the dynamic environment is restored.
+
+@item *
+The exception is raised again by applying @func{raise-continuable} to the same raised object.  The
+exception handler of the outer @syntax{guard} is applied to the raised object.
+
+@item inner-after outer-after
+The continuation of the outer @syntax{guard} use is reinstated, the dynamic extent of the call to
+@qvar{thunk} is exited: the dynamic environment unwinds.
+
+@item outer-guard-test
+The clause test expression of the outer @syntax{guard} is evaluated in the dynamic environment of
+the outer @syntax{guard}: it returns @true{}.
+
+@item outer-before inner-before
+The continuation of the of the outer @syntax{guard} exception handler is reinstated, the dynamic
+extent of the call to @qvar{thunk} is entered: the dynamic environment is restored.
+
+@item inner-after cleanup outer-after
+The continuation of the outer @syntax{guard} clause is reinstated, the the dynamic extent of the
+call to @qvar{thunk} is exited: the dynamic environment unwinds.  While unwinding: the @qvar{thunk}
+is found terminated and the @qvar{unwind-handler} is called in the dynamic environment of the
+@syntax{with-unwind-handler} use.
+
+@item outer-guard-expr
+The clause expression of the outer @syntax{guard} is evaluated in the dynamic environment of the
+outer @syntax{guard}.
+@end table
+
+That's Scheme!
+
+@c page
+@node syntaxes unwind except 2
+@subsection Raising continuable exceptions from the thunk
+
+
+A continuable exception is raised with @func{raise-continuable} and it is a way to resume the
+execution of a chunk of code after raising an exception.  This example shows the basic mechanism:
+
+@lisp
+(with-exception-handler
+    (lambda (E)
+      (+ E 2))
+  (lambda ()
+    (raise-continuable 1)))
+@result{} 3
+@end lisp
+
+The handling of a continuable exception can be the same of the handling of a non--continuable
+exception; in addition the exception handler is allowed to return.  In the latter case the dynamic
+extent of the call to @qvar{thunk} is @strong{not} exited, so @qvar{unwind-handler} is not called.
+
+The following example shows what happens when @qvar{thunk} raises a continuable exception:
+
+@lisp
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(with-result
+  (with-exception-handler
+      (lambda (E)
+        (add-result 'exception-handler)
+        (+ E 2))
+    (lambda ()
+      (with-unwind-handler
+          (lambda (why)
+            (add-result 'cleanup))
+        (lambda ()
+          (add-result 'thunk-in)
+          (begin0
+              (raise-continuable 1)
+            (add-result 'thunk-out)))))))
+@result{} (3 (thunk-in exception-handler thunk-out cleanup))
+@end lisp
+
+@c page
+@node syntaxes unwind except 3
+@subsection Raising exceptions from the unwind handler
+
+
+When a thunk raises an exception and the current exception handler raises another exception: the
+original exception is dropped if no specific action is taken.  This is a common problem.  The
+following example shows the mechanism.
+
+@lisp
+(call/cc
+    (lambda (escape)
+      (with-exception-handler
+          escape
+        (lambda ()
+          (with-exception-handler
+              (lambda (E)
+                (raise 2))
+            (lambda ()
+              (raise 1)))))))
+@result{} 2
+;;The originally raised value 1 is lost!
+@end lisp
+
+What happens if @qvar{unwind-handler} raises an exception?  It was decided that such exceptions are
+to be blocked and discarded; @qvar{unwind-handler} procedures have to take care of themselves,
+handling their own errors.  The following example shows the mechanism.
+
+@lisp
+(import (only (mmck checks)
+        with-result
+        add-result))
+
+(with-result
+  (guard (E (else
+             (add-result 'guard-else)
+             E))
+    (with-unwind-handler
+        (lambda (why)
+          (add-result 'cleanup-in)
+          (raise 2)
+          (add-result 'cleanup-out))
+      (lambda ()
+        (add-result 'thunk-in)
+        (raise 1)
+        (add-result 'thunk-out)))))
+@result{} (1 (thunk-in cleanup-in guard-else))
+@end lisp
+
+@c page
+@node syntaxes unwind returnable
+@subsection Use with returnable bodies
+
+
+The unwind--protection mechanism has special integration with the @syntax{returnable} syntax
+(@pxref{returnable}); if an unwind--protection syntax is used in the body of @syntax{returnable} and
+@syntax{return} is used in the body forms: the unwind handler is evaluated correctly.  We have to
+remember that @syntax{return} is implemented by an escaping continuation.
+
+@lisp
+(define y #f)
+
+(returnable
+  (with-unwind-handler
+      (lambda (why)
+        (set! y #t))
+    (lambda ()
+      (return 1))))
+@result{} 1
+y @result{} #t
+@end lisp
+
+@c page
+@c @node syntaxes unwind coroutines
+@c @subsection Use with coroutines
+
+
+@c Using the unwind--protection mechanism with coroutines is fine; coroutines use @func{yield} to save
+@c the current continuation, give control to the next coroutine and come back later; this mechanism
+@c does not cause the @qvar{unwind-handler} evaluation.
+
+@c The following sample code finishes with the given return values and
+@c lines printed:
+
+@c @lisp
+@c (import (vicare))
+
+@c (define (print template . args)
+@c   (apply fprintf (current-error-port) template args)
+@c   (yield))
+
+@c (define a #f)
+@c (define b #f)
+@c (define c #f)
+
+@c (concurrently
+@c   (lambda ()
+@c     (unwind-protect
+@c         (begin
+@c           (set! a 1.1)
+@c           (print "unwind-protect sub 1.1: ~a\n" a)
+@c           (set! a 1.2)
+@c           (print "unwind-protect sub 1.2: ~a\n" a)
+@c           (set! a 1.3)
+@c           (print "unwind-protect sub 1.3: ~a\n" a))
+@c       (set! a 1.4)))
+@c   (lambda ()
+@c     (unwind-protect
+@c         (begin
+@c           (set! b 2.1)
+@c           (print "unwind-protect sub 2.1: ~a\n" b)
+@c           (set! b 2.2)
+@c           (print "unwind-protect sub 2.2: ~a\n" b)
+@c           (set! b 2.3)
+@c           (print "unwind-protect sub 2.3: ~a\n" b))
+@c       (set! b 2.4)))
+@c   (lambda ()
+@c     (unwind-protect
+@c         (begin
+@c           (set! c 3.1)
+@c           (print "unwind-protect sub 3.1: ~a\n" c)
+@c           (set! c 3.2)
+@c           (print "unwind-protect sub 3.2: ~a\n" c)
+@c           (set! c 3.3)
+@c           (print "unwind-protect sub 3.3: ~a\n" c))
+@c       (set! c 3.4))))
+
+@c (values a b c)
+@c @result{} 1.4 2.4 3.4
+@c @print{} unwind-protect sub 1.1: 1.1
+@c @print{} unwind-protect sub 2.1: 2.1
+@c @print{} unwind-protect sub 1.2: 1.2
+@c @print{} unwind-protect sub 3.1: 3.1
+@c @print{} unwind-protect sub 2.2: 2.2
+@c @print{} unwind-protect sub 1.3: 1.3
+@c @print{} unwind-protect sub 3.2: 3.2
+@c @print{} unwind-protect sub 2.3: 2.3
+@c @print{} unwind-protect sub 3.3: 3.3
+@c @end lisp
+
+@c page
+@node syntaxes unwind reenter
+@subsection Handling reentering continuations
+
+
+After the @qvar{unwind-handler} is called: we do @strong{not} want the execution flow to reenter the
+@qvar{thunk} in the same dynamic extent.  After the dynamic extent of a call to @qvar{thunk}
+terminates, and the @qvar{unwind-handler} is called: we are forbidden to reenter the @qvar{thunk};
+if we try to reenter: an exception of type @condition{non-reinstatable} is raised.
+
+The first problem with reentering is that the code in the @qvar{thunk} expects invariants in the
+state of the process that are no longer true; for example: if @qvar{unwind-handler} closes an
+input/output port, the @qvar{thunk} still expects it to be open.
+
+Reentering might happen, for example, when using McCarthy's @syntax{amb} operator in the
+@qvar{thunk}.  This means we must be careful to use @syntax{amb} in a @qvar{thunk} only when the
+whole search never crosses the unwind protection contour.
+
+The following example shows how calling an escape procedure created in the @qvar{thunk} of a
+@syntax{with-unwind-handler} causes the exception to be raised:
+
+@lisp
+(import (only (mmck checks)
+        with-result
+        add-result))
+
+(with-result
+  (guard (E ((non-reinstatable-violation? E)
+             (add-result 'violation)
+             #t)
+            (else E))
+    (let ((rv (with-unwind-handler
+                  (lambda (why)
+                    (add-result 'cleanup))
+                (lambda ()
+                  (add-result 'body-in)
+                  (begin0
+                      (call/cc values)
+                    (add-result 'body-out))))))
+      (cond ((procedure? rv)
+             (add-result 'reinstating)
+             (rv 123))
+            (else
+             (add-result 'returning)
+             rv)))))
+@result{} (#t (body-in body-out cleanup reinstating violation))
+@end lisp
+
+@c page
+@node syntaxes unwind dyn-env
+@subsection Clean--up thunks and the dynamic environment
+
+
+As @rnrs{6} states:
+
+@quotation
+Some operations described in the report acquire information in addition to their explicit arguments
+from the @emph{dynamic environment}.  For example, @func{call/cc} accesses an implicit context
+established by @func{dynamic-wind}, and the @func{raise} procedure accesses the current exception
+handler.
+@end quotation
+
+@noindent
+the typical example of values from the dynamic environment is parameters, which indeed are
+implemented on top of @func{dynamic-wind}.  When using the unwind--protection mechanism:
+
+@lisp
+(with-unwind-handler @qvar{unwind-handler} @qvar{thunk})
+@end lisp
+
+@noindent
+the procedure @qvar{unwind-handler} is called in the dynamic environment of the use of
+@syntax{with-unwind-handler}.
+
+For example, when escaping from @qvar{thunk} with @syntax{return}:
+
+@lisp
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(define parm
+  (make-parameter #f))
+
+(with-result
+  (parameterize ((parm 'outer-parm))
+    (returnable
+      (parameterize ((parm 'inner-parm))
+        (with-unwind-handler
+            (lambda (why)
+              (add-result 'cleanup-in)
+              (add-result (parm))
+              (add-result 'cleanup-out))
+          (lambda ()
+            (add-result 'thunk-in)
+            (add-result (parm))
+            (return 2)
+            (add-result 'thunk-out)
+            1))))))
+@result{} (2 (thunk-in inner-parm
+       cleanup-in inner-parm cleanup-out))
+@end lisp
+
+@noindent
+we see that, even though @syntax{return} reinstates the continuation of @syntax{returnable}:
+@qvar{unwind-handler} gathers the parameter value from inside the use of @syntax{returnable}.
+
+Even more descriptive is the case of raising an exception from @qvar{thunk} and catching it with
+@syntax{guard}:
+
+@lisp
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(define parm
+  (make-parameter #f))
+
+(with-result
+  (parameterize ((parm 'outer-parm))
+    (guard (E ((begin
+                 (add-result 'guard-test-in)
+                 (add-result (parm))
+                 (add-result 'guard-test-out)
+                 #t)
+               (add-result 'guard-expr-in)
+               (add-result (parm))
+               (add-result 'guard-expr-out)
+               E))
+      (parameterize ((parm 'inner-parm))
+        (with-unwind-handler
+            (lambda (why)
+              (add-result 'cleanup-in)
+              (add-result (parm))
+              (add-result 'cleanup-out))
+          (lambda ()
+            (add-result 'thunk-in)
+            (add-result (parm))
+            (raise 2)
+            (add-result 'thunk-out)
+            1))))))
+@result{} (2 (thunk-in inner-parm
+       guard-test-in outer-parm guard-test-out
+       cleanup-in inner-parm cleanup-out
+       guard-expr-in outer-parm guard-expr-out))
+@end lisp
+
+@noindent
+both @qvar{thunk} and @qvar{unwind-handler} gather the inner value, while the test and expression of
+the @syntax{guard} clause gather the outer value, even though the execution order is intermixed.
+
+Changing the environment inside @qvar{thunk} does not affect @qvar{unwind-handler}:
+
+@lisp
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(define parm
+  (make-parameter #f))
+
+(with-result
+  (parameterize ((parm 'outer-parm))
+    (with-unwind-handler
+        (lambda (why)
+          (add-result 'cleanup-in)
+          (add-result (parm))
+          (add-result 'cleanup-out))
+      (lambda ()
+        (parameterize ((parm 'inner-parm))
+          (add-result 'thunk-in)
+          (add-result (parm))
+          (add-result 'thunk-out)
+          1)))))
+@result{} (1 (thunk-in inner-parm thunk-out
+       cleanup-in outer-parm cleanup-out))
+
+(with-result
+  (returnable
+    (parameterize ((parm 'outer-parm))
+      (with-unwind-handler
+          (lambda (why)
+            (add-result 'cleanup-in)
+            (add-result (parm))
+            (add-result 'cleanup-out))
+        (lambda ()
+          (parameterize ((parm 'inner-parm))
+            (add-result 'thunk-in)
+            (add-result (parm))
+            (return 2)
+            (add-result 'thunk-out)
+            1))))))
+@result{} (2 (thunk-in inner-parm
+       cleanup-in outer-parm cleanup-out))
+@end lisp
+
+@c page
+@node syntaxes unwind problems
+@subsection Known problems
+
+
+The unwind protection mechanism may misbehave in some cases.  Specifically the unwind handler may
+not be called in the following cases:
+
+@itemize
+@item
+An exception is raised by a thunk and, while handling it, a second exception is raised.
+
+@item
+An exception is raised by the in--guard or out--guard thunks of a call to @func{dynamic-wind}.
+@end itemize
+
+@c ------------------------------------------------------------------------
+
+@subsubheading Raising exceptions from an exception handler
+
+In the following example an exception is raised by an exception handler: the unwind handler is
+called, but the original exception is lost.
+
+@example
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(with-result
+  (guard (E (else
+             (add-result 'guard-else)
+             E))
+    (with-exception-handler
+        (lambda (E)
+          (add-result 'exception-handler)
+          (raise 2))
+      (lambda ()
+        (with-unwind-handler
+            (lambda (why)
+              (add-result 'unwind-handler))
+          (lambda ()
+            (dynamic-wind
+                (lambda ()
+                  (add-result 'in-guard))
+                (lambda ()
+                  (add-result 'thunk-in)
+                  (raise 1)
+                  (add-result 'thunk-out))
+                (lambda ()
+                  (add-result 'out-guard)))))))))
+@result{} (2 (in-guard
+       thunk-in
+       exception-handler
+       out-guard
+       in-guard out-guard unwind-handler
+       guard-else))
+@end example
+
+@c ------------------------------------------------------------------------
+
+@subsubheading Raising exceptions from a @syntax{guard}'s test
+
+In the following example an exception is raised from a @syntax{guard}'s test expression: the unwind
+handler is @strong{not} called and the original exception is lost.
+
+@example
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(with-result
+  (guard (E (else
+             (add-result 'outer-guard-else)
+             E))
+    (guard (E ((begin
+                 (add-result 'inner-guard-test)
+                 (raise 2))
+               E))
+      (with-unwind-handler
+          (lambda (why)
+            (add-result 'unwind-handler))
+        (lambda ()
+          (dynamic-wind
+              (lambda ()
+                (add-result 'in-guard))
+              (lambda ()
+                (add-result 'thunk-in)
+                (raise 1)
+                (add-result 'thunk-out))
+              (lambda ()
+                (add-result 'out-guard))))))))
+@result{} (2 (in-guard
+       thunk-in
+       out-guard
+       inner-guard-test
+       outer-guard-else))
+@end example
+
+@c ------------------------------------------------------------------------
+
+@subsubheading Raising exceptions from @func{dynamic-wind} guards
+
+In the following example an exception is raised from a @func{dynamic-wind}'s in--guard thunk: the
+unwind handler is @strong{not} called and the original exception is lost.
+
+@example
+(with-result
+  (guard (E (else
+             (add-result 'guard-else)
+             E))
+    (dynamic-wind
+        (let ((flag #f))
+          (lambda ()
+            (cond (flag
+                   (add-result 'in-guard/raise)
+                   (raise 2))
+                  (else
+                   (set! flag #t)
+                   (add-result 'in-guard)))))
+        (lambda ()
+          (with-unwind-handler
+              (lambda (E)
+                (add-result 'unwind-handler))
+            (lambda ()
+              (add-result 'thunk-in)
+              (raise 1))))
+        (lambda ()
+          (add-result 'out-guard)))))
+@result{} (2 (in-guard
+       thunk-in
+       out-guard
+       in-guard/raise
+       guard-else))
+@end example
+
+@c page
+@node syntaxes unwind call/cc
+@subsection Unwinding @func{call/cc}
+
+
+We have seen that performing a raw escape from an exception handler skips calling the unwind
+handlers installed in the body:
+
+@lisp
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(with-result
+  (call/cc
+      (lambda (escape)
+        (with-exception-handler
+            (lambda (E)
+              (add-result 'exception-handler)
+              (escape 2))
+          (lambda ()
+            (with-unwind-handler
+                (lambda (why)
+                  (add-result 'unwind-handler))
+              (lambda ()
+                (add-result 'body-in)
+                (raise 1))))))))
+@result{} (2 (body-in exception-handler))
+@end lisp
+
+@noindent
+this problem can be solved by using @func{unwinding-call/cc} rather than the standard
+@func{call/cc}.
+
+
+@defun unwinding-call/cc @var{receiver}
+Similar to @func{call/cc}, but calling the escape procedure causes the invocation of the unwind
+handlers installed in the dynamic environment up until the saved continuation is restored.
+
+There are limitations:
+
+@itemize
+@item
+The escape procedure produced by this primitive @strong{must} be called only from the dynamic extent
+of the call to @var{receiver}.  For example: generating an unwinding escape procedure in a coroutine
+and calling it from another coroutine leads to raising an exception of type
+@condition{non-reinstatable}.
+
+@item
+The escape procedure produced by this primitive @strong{must} be called only once; an attempt to
+call it a second time leads to raising an exception of type @condition{non-reinstatable}.
+@end itemize
+
+@quotation
+@strong{NOTE} After some development iterations, the implementation of this primitive has taken a
+shape quite similar to the function @func{call/cc-escaping} proposed by Will Clinger in
+@url{http:/@//@/www.ccs.neu.edu/@/home/@/will/@/UWESC/@/uwesc.sch}.
+@end quotation
+@end defun
+
+
+Usage examples:
+
+@lisp
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(with-result
+  (unwinding-call/cc
+      (lambda (escape)
+        (with-unwind-handler
+            (lambda (why)
+              (add-result 'unwind-handler))
+          (lambda ()
+            (add-result 'body-in)
+            (escape 1))))))
+@result{} (1 (body-in unwind-handler))
+
+(with-result
+  (unwinding-call/cc
+      (lambda (escape)
+        (with-exception-handler
+            (lambda (E)
+              (add-result 'exception-handler)
+              (escape 2))
+          (lambda ()
+            (with-unwind-handler
+                (lambda (why)
+                  (add-result 'unwind-handler))
+              (lambda ()
+                (add-result 'body-in)
+                (raise 1))))))))
+@result{} (2 (body-in exception-handler unwind-handler))
+
+;;Calling unwinding escape procedure from outside the
+;;dynamic extent of the call to the receiver.
+;;
+(let ((escape-proc #f))
+  (unwinding-call/cc
+      (lambda (escape)
+        (set! escape-proc escape)))
+  (escape-proc))
+@error{} &non-reinstatable
+
+;;Calling unwinding escape procedure twice.
+;;
+(let ((again-proc #f))
+  (unwinding-call/cc
+      (lambda (escape)
+        (call/cc
+            (lambda (again)
+              (set! again-proc again)))
+        (escape)))
+  (again-proc))
+@error{} &non-reinstatable
+@end lisp
+
+@c page
+@node syntaxes compensations
+@section Compensation stacks
+
+@c page
+@node syntaxes try
+@section The @syntax{try} syntax
+
+
+@c page
+@node syntaxes blocking
+@section Blocking exceptions
 
 
 @c page
