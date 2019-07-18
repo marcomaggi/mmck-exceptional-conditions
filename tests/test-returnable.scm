@@ -104,9 +104,11 @@
 	      (return)
 	      (add-result 'out)
 	      1))
-	  (ciao)
-	  #t))
-    => '(#t (in)))
+	  (call-with-values
+	      (lambda ()
+		(ciao))
+	    list)))
+    => '(() (in)))
 
   (check	;return single value
       (with-result
@@ -164,24 +166,25 @@
 	(let ()
 	  (define-returnable (ciao)
 	    (add-result 'in)
-	    ((mmck-return-handler) 1)
-	    #;(return)
+	    (return)
 	    (add-result 'out)
 	    1)
-	  (ciao)
-	  #t))
-    => '(#t (in)))
+	  (call-with-values
+	      (lambda ()
+		(ciao))
+	    list)))
+    => '(() (in)))
 
-  #;(check	;return single value
-  (with-result	; ;
-  (let ()	; ;
-  (define-returnable (ciao) ; ;
-  (add-result 'in) ; ;
-  (return 2)	; ;
-  (add-result 'out) ; ;
-  1)		; ;
-  (ciao)))	; ;
-  => '(2 (in)))
+  (check	;return single value
+      (with-result
+	(let ()
+	  (define-returnable (ciao)
+	    (add-result 'in)
+	    (return 2)
+	    (add-result 'out)
+	    1)
+	  (ciao)))
+    => '(2 (in)))
 
   (check	;return multiple values
       (with-result
@@ -223,7 +226,7 @@
 	  (ciao 1 2)))
     => '((1 2) (in out)))
 
-  #;(check	;return no values
+  (check	;return no values
       (with-result
 	(let ()
 	  (define ciao
@@ -232,9 +235,10 @@
 	      (return)
 	      (add-result 'out)
 	      1))
-	  (ciao)
-	  #t))
-    => '(#t (in)))
+	  (call-with-values
+	      (lambda () (ciao))
+	    list)))
+    => '(() (in)))
 
   (check	;return single value
       (with-result
@@ -283,15 +287,17 @@
 	  (list 1 2)))
     => '((1 2) (in out)))
 
-  #;(check	;return no values
+  (check	;return no values
       (with-result
-	(begin-returnable
-	  (add-result 'in)
-	  (return)
-	  (add-result 'out)
-	  1)
-	#t)
-    => '(#t (in)))
+	(call-with-values
+	    (lambda ()
+	      (begin-returnable
+		(add-result 'in)
+		(return)
+		(add-result 'out)
+		1))
+	  list))
+    => '(() (in)))
 
   (check	;return single value
       (with-result

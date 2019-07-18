@@ -163,58 +163,22 @@
   (unless (procedure? thunk)
     (assertion-violation 'with-exception-handler "expected procedure as THUNK argument" thunk))
   (parameterize ((current-handlers (cons handler (current-handlers))))
+    #;(debug-print 'with-exception-handler 'installed-handler handler)
     (thunk)))
-
-
-;;;; syntax GUARD
-
-;; (define-syntax guard
-;;   (er-macro-transformer
-;;     (lambda (input-form.stx rename compare)
-;;       (define (main input-form.stx)
-;; 	(match input-form.stx
-;; 	  ((_ (?variable ?cond-clause0 ?cond-clause ...) ?body0 ?body ...)
-;; 	   ))
-
-;;       (apply	;external apply
-;;        (call/cc
-;; 	   (lambda (guard-kont)
-;; 	     (lambda ()
-;;                (with-exception-handler
-;; 		   (lambda (D) ;shell
-;; 		     (apply ;internal apply
-;;                       (call/cc
-;; 			  (lambda (reraise-kont)
-;; 			    (guard-kont
-;; 			     (lambda () ;handler
-;;                                (let ((E D))
-;; 				 (cond ((alpha-condition? E)
-;; 					(do-alpha))
-;;                                        ((beta-condition? E)
-;; 					(do-beta))
-;;                                        (else
-;; 					(reraise-kont
-;; 					 (lambda () ;reraise
-;; 					   (raise-continuable D)))))))
-;; 			     )))))
-;; 		 (lambda () ;body
-;; 		   (dynamic-wind
-;;                        (lambda () (in-guard))
-;;                        (lambda () (form-a))
-;;                        (lambda () (out-guard)))))))))
-
-
-
 
 
 ;;;; raising exceptions
 
 (define (raise obj)
+  #;(debug-print 'raise 'enter obj)
   (let* ((handlers	(current-handlers))
 	 (head		(car handlers))
 	 (tail		(cdr handlers)))
     (parameterize ((current-handlers tail))
+      #;(debug-print 'raise 'head-handler head)
       (head obj)
+      #;(debug-print 'raise 'returned-from-head-handler obj)
+      #;(debug-print 'raise 'next-handler (car (current-handlers)))
       (raise (condition
 	       (make-non-continuable-violation)
 	       (make-who-condition 'raise)

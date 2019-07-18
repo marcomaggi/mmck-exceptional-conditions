@@ -43,6 +43,11 @@
 	      call/cc
 	      with-exception-handler)
      (syntax: unwind-protect)
+     (syntax: guard
+	      call/cc
+	      raise-continuable
+	      run-unwind-protection-cleanup-upon-exit?
+	      with-exception-handler)
      unwinding-call/cc
      mmck-return-handler)
   (import (scheme)
@@ -57,6 +62,42 @@
 		     (only (matchable)
 			   match)
 		     (mmck exceptional-conditions helpers))
+
+
+;;;; syntax RETURNABLE
+
+(define mmck-return-handler
+  (make-parameter
+      (lambda args
+	(error 'return "used RETURN syntax outside a syntax that binds it"))
+    (lambda (obj)
+      (if (procedure? obj)
+	  obj
+	(assertion-violation 'mmck-return-handler
+	  "expected procedure as value for parameter MMCK-RETURN-HANDLER" obj)))))
+
+(define-syntax return
+  (syntax-rules ()
+    ((_ ?arg ...)
+     ((mmck-return-handler) ?arg ...))
+    ))
+
+(define-syntax returnable
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+      (define %unwinding-call/cc	(rename 'unwinding-call/cc))
+      (define %lambda			(rename 'lambda))
+      (define %parameterize		(rename 'parameterize))
+      (define %mmck-return-handler	(rename 'mmck-return-handler))
+
+      (match input-form.stx
+	((_ ?body0 ?body* ...)
+	 `(,%unwinding-call/cc
+	   (,%lambda (escape)
+		     (,%parameterize ((,%mmck-return-handler escape))
+				     ,?body0 . ,?body*))))
+	(_
+	 (syntax-error 'returnable "invalid syntax in macro use"))))))
 
 
 ;;;; unwind protection infrastructure
@@ -115,42 +156,6 @@
 	  (set! inside-dynamic-extent-of-receiver-call? #f)))))
 
 
-;;;; syntax RETURNABLE
-
-(define mmck-return-handler
-  (make-parameter
-      (lambda args
-	(error 'return "used RETURN syntax outside a syntax that binds it"))
-    (lambda (obj)
-      (if (procedure? obj)
-	  obj
-	(assertion-violation 'mmck-return-handler
-	  "expected procedure as value for parameter MMCK-RETURN-HANDLER" obj)))))
-
-(define-syntax return
-  (syntax-rules ()
-    ((_ ?arg ...)
-     ((mmck-return-handler) ?arg ...))
-    ))
-
-(define-syntax returnable
-  (er-macro-transformer
-    (lambda (input-form.stx rename compare)
-      (define %unwinding-call/cc	(rename 'unwinding-call/cc))
-      (define %lambda			(rename 'lambda))
-      (define %parameterize		(rename 'parameterize))
-      (define %mmck-return-handler	(rename 'mmck-return-handler))
-
-      (match input-form.stx
-	((_ ?body0 ?body* ...)
-	 `(,%unwinding-call/cc
-	   (,%lambda (escape)
-		     (,%parameterize ((,%mmck-return-handler escape))
-				     ,?body0 . ,?body*))))
-	(_
-	 (syntax-error 'returnable "invalid syntax in macro use"))))))
-
-
 ;;;; syntax WITH-UNWIND-HANDLER
 
 (define-syntax with-unwind-handler
@@ -166,7 +171,7 @@
     (build-output-form handler.stx thunk.stx)))
 
 (define (synner message . args)
-  (apply syntax-error 'with-undind-handler message input-form.stx args))
+  (apply syntax-error 'with-unwind-handler message input-form.stx args))
 
 (define (parse-input-form input-form.stx)
   (match input-form.stx
@@ -258,6 +263,386 @@
 	   (,%lambda () ,?body)))
 	(_
 	 (syntax-error "invalid syntax in macro use"))))))
+
+
+;;;; syntax GUARD
+;;
+;;The following implementation  of the GUARD syntax  is really sophisticated because it  has to deal
+;;with both the dynamic environment requirements of R6RS and the unwind protection mechanism defined
+;;by this package.   For a through explanation  we should read the documentation  in Texinfo format,
+;;both the one of GUARD and the one of the unwind protection mechanism.
+;;
+;;
+;;About the dynamic environment
+;;-----------------------------
+;;
+;;In a syntax use like:
+;;
+;;   (guard (E (?test0 ?expr0)
+;;             (?test1 ?expr1)
+;;             (else   ?expr2))
+;;     ?body0 ?body ...)
+;;
+;;if the ?BODY raises  an exception: one of the clauses will certainly  be executed because there is
+;;an  ELSE clause.   The  ?BODY  might mutate  the  dynamic environment;  all  the  ?TEST and  ?EXPR
+;;expressions must be evaluated in the dynamic environment of the use of GUARD.
+;;
+;;In a syntax use like:
+;;
+;;   (guard (E (?test0 ?expr0)
+;;             (?test1 ?expr1))
+;;     ?body0 ?body ...)
+;;
+;;if  all  the  ?TEST  expressions  evaluate  to   false:  we  must  re-raise  the  exception  using
+;;RAISE-CONTINUABLE; so the syntax is "almost" equivalent to:
+;;
+;;   (guard (E (?test0 ?expr0)
+;;             (?test1 ?expr1)
+;;             (else   (raise-continuable E)))
+;;     ?body0 ?body ...)
+;;
+;;but: ?BODY  might mutate  the dynamic  environment; all the  ?TEST and  ?EXPR expressions  must be
+;;evaluated in the dynamic environment of the use of GUARD; the RAISE-CONTINUABLE in the ELSE clause
+;;must be evaluated the dynamic environment of the ?BODY.
+;;
+;;We must remember that, when using:
+;;
+;;   (with-exception-handler ?handler ?thunk)
+;;
+;;the ?HANDLER procedure is evaluated in the  dynamic environment of the ?THUNK, minus the exception
+;;handler itself.  So, in pseudo-code, a syntax use with ELSE clause must be expanded as follows:
+;;
+;;   (guard (E (?test0 ?expr0)
+;;             (?test1 ?expr1)
+;;             (else   ?expr2))
+;;     ?body0 ?body ...)
+;;   ==> (save-guard-continuation
+;;        (with-exception-handler
+;;            (lambda (E)
+;;              (reinstate-guard-continuation
+;;               (cond (?test0 ?expr0)
+;;                     (?test1 ?expr1)
+;;                     (else   ?expr2))))
+;;          (lambda () ?body0 ?body ...)))
+;;
+;;and, also in pseudo-code, a syntax use without ELSE clause must be expanded as follows:
+;;
+;;   (guard (E (?test0 ?expr0)
+;;             (?test1 ?expr1))
+;;     ?body0 ?body ...)
+;;   ==> (save-guard-continuation
+;;        (with-exception-handler
+;;            (lambda (E)
+;;              (save-exception-handler-continuation
+;;               (reinstate-guard-continuation
+;;                (cond (?test0 ?expr0)
+;;                      (?test1 ?expr1)
+;;                      (else   (reinstate-exception-handler-continuation
+;;                               (raise-continuable E)))))))
+;;          (lambda () ?body0 ?body ...)))
+;;
+;;notice how, in  the exception handler, we have to  jump out and in the dynamic  environment of the
+;;exception handler itself.
+;;
+;;
+;;About the unwind-protection mechanism
+;;-------------------------------------
+;;
+;;There is some serious shit going on here  to support the unwind-protection mechanism as defined by
+;;this package; let's focus on unwind-proteciton in the case of raised exception.  When using:
+;;
+;;   (with-unwind-handler ?cleanup ?thunk)
+;;
+;;the ?CLEANUP is associated to the dynamic extent of the call to ?THUNK: when the dynamic extent is
+;;terminated   (as   defined  by   this   package)   the  ?CLEANUP   is   called.    If  the   value
+;;RUN-UNWIND-PROTECTION-CLEANUP-UPON-EXIT?   is set  to true  and the  dynamic extent  of a  call to
+;;?THUNK is exited: the dynamic extent is considered terminated and ?CLEANUP is called.
+;;
+;;This package  defines as termination event  of a GUARD's ?BODY  the execution of a  GUARD's clause
+;;that does not re-raise the exception.  For a GUARD use like:
+;;
+;;   (guard (E (?test0 ?expr0)
+;;             (?test1 ?expr1)
+;;             (else   ?expr2))
+;;     ?body0 ?body ...)
+;;
+;;we can imagine the pseudo-code:
+;;
+;;   (guard (E (?test0 (run-unwind-protection-cleanups) ?expr0)
+;;             (?test1 (run-unwind-protection-cleanups) ?expr1)
+;;             (else   (run-unwind-protection-cleanups) ?expr2))
+;;     ?body0 ?body ...)
+;;
+;;and for a GUARD use like:
+;;
+;;   (guard (E (?test0 ?expr0)
+;;             (?test1 ?expr1))
+;;     ?body0 ?body ...)
+;;
+;;we can imagine the pseudo-code:
+;;
+;;   (guard (E (?test0 (run-unwind-protection-cleanups) ?expr0)
+;;             (?test1 (run-unwind-protection-cleanups) ?expr1)
+;;             (else   (raise-continuable E)))
+;;     ?body0 ?body ...)
+;;
+;;By doing things  this way: an exception  raised by an ?EXPR  does not impede the  execution of the
+;;cleanups.  If a  ?TEST raises an exception the cleanups  will not be run, and there  is nothing we
+;;can do about  it; ?TEST expressions are  usually calls to predicates that  recognise the condition
+;;type of E, so the risk of error is reduced.
+;;
+;;So, in pseudo-code, a syntax use with ELSE clause must be expanded as follows:
+;;
+;;   (guard (E (?test0 ?expr0)
+;;             (?test1 ?expr1)
+;;             (else   ?expr2))
+;;     ?body0 ?body ...)
+;;   ==> (save-guard-continuation
+;;        (with-exception-handler
+;;            (lambda (E)
+;;              (reinstate-guard-continuation
+;;               (cond (?test0 (run-unwind-protection-cleanups) ?expr0)
+;;                     (?test1 (run-unwind-protection-cleanups) ?expr1)
+;;                     (else   (run-unwind-protection-cleanups) ?expr2))))
+;;          (lambda () ?body0 ?body ...)))
+;;
+;;and, also in pseudo-code, a syntax use without ELSE clause must be expanded as follows:
+;;
+;;   (guard (E (?test0 ?expr0)
+;;             (?test1 ?expr1))
+;;     ?body0 ?body ...)
+;;   ==> (save-guard-continuation
+;;        (with-exception-handler
+;;            (lambda (E)
+;;              (save-exception-handler-continuation
+;;               (reinstate-guard-continuation
+;;                (cond (?test0 (run-unwind-protection-cleanups) ?expr0)
+;;                      (?test1 (run-unwind-protection-cleanups) ?expr1)
+;;                      (else   (reinstate-exception-handler-continuation
+;;                               (raise-continuable E)))))))
+;;          (lambda () ?body0 ?body ...)))
+;;
+;;But how is RUN-UNWIND-PROTECTION-CLEANUPS implemented?  To cause the cleanups to be called we must
+;;set  to true  the  value RUN-UNWIND-PROTECTION-CLEANUP-UPON-EXIT?,  then cause  an  exit from  the
+;;dynamic extent of the ?THUNKs.  The latter is a sophisticated operation implemented as follows:
+;;
+;;   (define (run-unwind-protection-cleanups)
+;;     (run-unwind-protection-cleanup-upon-exit? #t)
+;;     (save-clause-expression-continuation
+;;      (reinstate-exception-handler-continuation
+;;       (reinstate-clause-expression-continuation))))
+;;
+;;we jump in GUARD's exception handler dynamic  environment then immediately jump out in the GUARD's
+;;clause expression dynamic environment.  Fucking weird...
+;;
+;;
+;;Expansion example: GUARD with no ELSE clause
+;;--------------------------------------------
+;;
+;;A syntax without else clause like looks like this:
+;;
+;;   (guard (E
+;;           (?test0 ?expr0)
+;;           (?test1 ?expr1)))
+;;     ?body0 ?body ...)
+;;
+;;is expanded to:
+;;
+;;   ((call/cc
+;;        (lambda (reinstate-guard-continuation)
+;;          (lambda ()
+;;            (with-exception-handler
+;;                (lambda (raised-obj)
+;;                  (let ((E raised-obj))
+;;                    ((call/cc
+;;                         (lambda (reinstate-exception-handler-continuation)
+;;                           (reinstate-guard-continuation
+;;                            (lambda ()
+;;                              (define (run-unwind-protect-cleanups)
+;;                                (run-unwind-protection-cleanup-upon-exit? 'exception)
+;;                                (call/cc
+;;                                    (lambda (reinstate-clause-expression-continuation)
+;;                                      (reinstate-exception-handler-continuation
+;;                                       (lambda ()
+;;                                         (reinstate-clause-expression-continuation)))))
+;;                                (run-unwind-protection-cleanup-upon-exit? #f))
+;;                              (if ?test0
+;;                                  (begin
+;;                                    (run-unwind-protect-cleanups)
+;;                                    ?expr0)
+;;                                (if ?test1
+;;                                    (begin
+;;                                      (run-unwind-protect-cleanups)
+;;                                      ?expr1)
+;;                                  (reinstate-exception-handler-continuation
+;;                                   (lambda ()
+;;                                     (raise-continuable raised-obj))))))))))))
+;;              (lambda ()
+;;                ?body0 ?body ...))))))
+;;
+(define-syntax guard
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+
+
+;;;; syntax GUARD: main function and helpers
+
+(define (main input-form.stx)
+  (receive (variable.id clauses.stx body.stx)
+      (parse-input-form input-form.stx)
+    (let ((run-clauses.stx (gen-clauses clauses.stx)))
+      (build-output-form variable.id run-clauses.stx body.stx))))
+
+(define (synner message . args)
+  (apply syntax-error 'guard message input-form.stx args))
+
+(define (check-variable variable.id)
+  (unless (syntactic-identifier? variable.id)
+    (synner "expected syntactic identifier as variable name" variable.id)))
+
+(define (syntactic-identifier? obj)
+  (symbol? obj))
+
+
+;;;; syntax GUARD: syntactic identifiers needed in the output form
+
+(define %begin		(rename 'begin))
+(define %define		(rename 'define))
+(define %lambda		(rename 'lambda))
+(define %if		(rename 'if))
+(define %let		(rename 'let))
+(define %set!		(rename 'set!))
+
+;;This is only for debugging purposes.
+(define %debug-print	(rename 'debug-print))
+
+(define %call/cc					(rename 'call/cc))
+(define %raise-continuable				(rename 'raise-continuable))
+(define %run-unwind-protection-cleanup-upon-exit?	(rename 'run-unwind-protection-cleanup-upon-exit?))
+(define %with-exception-handler				(rename 'with-exception-handler))
+
+
+;;;; syntax GUARD: parsing input form
+
+(define (parse-input-form input-form.stx)
+  (match input-form.stx
+    ((_ (?variable ?clause* ...) ?body ?body* ...)
+     (begin
+       (check-variable ?variable)
+       (values ?variable ?clause* (cons ?body ?body*))))
+    (_
+     (synner "invalid syntax in macro use"))))
+
+
+;;;; syntax GUARD: building output form
+
+(define (build-output-form variable.id run-clauses.stx body.stx)
+  `((,%call/cc
+     (,%lambda (reinstate-guard-continuation)
+	       (,%lambda ()
+			 (,%with-exception-handler
+			  (,%lambda (raised-obj)
+				    ;;If we  raise an  exception from  a DYNAMIC-WIND's  in-guard or
+				    ;;out-guard while  trying to call  the cleanups: we reset  it to
+				    ;;avoid leaving it true.
+				    (,%run-unwind-protection-cleanup-upon-exit? #f)
+				    (,%let ((,variable.id raised-obj))
+					   ,run-clauses.stx))
+			  ;;Here we use LAMBDA to propagate the type of the last body form.
+			  (,%lambda () ,@body.stx)))))))
+
+
+;;;; syntax GUARD:
+
+(define (gen-clauses clause*)
+  (let ((code-stx (%process-multi-cond-clauses clause*)))
+    `((,%call/cc
+       (,%lambda (reinstate-exception-handler-continuation)
+		 (reinstate-guard-continuation
+		  (,%lambda ()
+			    (,%define (run-unwind-protect-cleanups)
+				      ;;If this function  is called: a test in  the clauses returned
+				      ;;non-false and the execution flow  is at the beginning of the
+				      ;;corresponding clause expression.
+				      ;;
+				      ;;Reinstate the continuation of  the guard's exception handler
+				      ;;and then immediately reinstate  this continuation: jump out,
+				      ;;then jump back  in.  This causes the  dynamic environment of
+				      ;;the   exception   handler   to  be   reinstated,   and   the
+				      ;;unwind-protection cleanups are called.
+				      ;;
+				      ;;Yes,  we  must  really  set  the  parameter  to  the  symbol
+				      ;;"exception"; this symbol is used  as argument for the unwind
+				      ;;handlers.
+				      (,%run-unwind-protection-cleanup-upon-exit? 'exception)
+				      (,%call/cc
+				       (,%lambda (reinstate-clause-expression-continuation)
+						 (reinstate-exception-handler-continuation
+						  (,%lambda ()
+							    ;;CHICKEN wants this  escape function to
+							    ;;return  one value!   It  is a  CHICKEN
+							    ;;bug/limitation.  See  CHICKEN's issues
+							    ;;repository.
+							    (reinstate-clause-expression-continuation #f)))))
+				      (,%run-unwind-protection-cleanup-upon-exit? #f))
+			    ,code-stx)))))))
+
+(define (%process-multi-cond-clauses clause*)
+  (match clause*
+    ;;There is no ELSE clause: insert code that reinstates the continuation of the exception handler
+    ;;introduced by GUARD and re-raises the exception.
+    (()
+     `(reinstate-exception-handler-continuation
+       (,%lambda ()
+		 (,%raise-continuable raised-obj))))
+
+    ;;There is an ELSE clause: no need to jump back to the exception handler introduced by GUARD.
+    ((('else ?else-body ?else-body* ...))
+     `(,%begin
+       (run-unwind-protect-cleanups)
+       ,?else-body . ,?else-body*))
+
+    ((?clause . ?clause*)
+     (let ((kont-code.stx (%process-multi-cond-clauses ?clause*)))
+       (%process-single-cond-clause ?clause kont-code.stx)))
+
+    (?others
+     (synner "invalid guard clause" ?others))))
+
+(define (%process-single-cond-clause clause kont-code-stx)
+  (match clause
+    ((?test '=> ?proc)
+     (let ((tmp (gensym)))
+       `(,%let ((,tmp ,?test))
+	       (,%if ,tmp
+		     (,%begin
+		      (run-unwind-protect-cleanups)
+		      (,?proc ,tmp))
+		     ,kont-code-stx))))
+
+    ((?test)
+     (let ((tmp (gensym)))
+       `(,%let ((,tmp ,?test))
+	       (,%if ,tmp
+		     (,%begin
+		      (run-unwind-protect-cleanups)
+		      ,tmp)
+		     ,kont-code-stx))))
+
+    ((?test ?expr ?expr* ...)
+     `(,%if ,?test
+	    (,%begin
+	     (run-unwind-protect-cleanups)
+	     ,?expr . ,?expr*)
+	    ,kont-code-stx))
+
+    (_
+     (synner "invalid guard clause" clause))))
+
+
+;;;; syntax GUARD: let's go
+
+(main input-form.stx))))
 
 
 ;;;; done

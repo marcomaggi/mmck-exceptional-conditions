@@ -537,6 +537,30 @@ tests/test-returnable.exe: tests/test-returnable.$(OBJEXT)
 
 ## --------------------------------------------------------------------
 
+EXTRA_DIST		+= tests/test-guard.scm
+MMCK_CHECK_OBJECTS	+= tests/test-guard.$(OBJEXT)
+MMCK_CHECK_PROGS	+= tests/test-guard.exe
+
+tests/test-guard.$(OBJEXT): tests/test-guard.scm $(MMCK_CHECK_DEPS)
+	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
+
+tests/test-guard.exe: tests/test-guard.$(OBJEXT)
+	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
+
+## --------------------------------------------------------------------
+
+EXTRA_DIST		+= tests/test-demo.scm
+MMCK_CHECK_OBJECTS	+= tests/test-demo.$(OBJEXT)
+MMCK_CHECK_PROGS	+= tests/test-demo.exe
+
+tests/test-demo.$(OBJEXT): tests/test-demo.scm $(MMCK_CHECK_DEPS)
+	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
+
+tests/test-demo.exe: tests/test-demo.$(OBJEXT)
+	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
+
+## --------------------------------------------------------------------
+
 EXTRA_DIST		+= tests/test-chicken-compat.scm
 MMCK_CHECK_OBJECTS	+= tests/test-chicken-compat.$(OBJEXT)
 MMCK_CHECK_PROGS	+= tests/test-chicken-compat.exe
