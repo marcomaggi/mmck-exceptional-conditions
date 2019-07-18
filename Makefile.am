@@ -302,6 +302,61 @@ lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT): lib/mmck.exceptio
 	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
 
 
+#### library (mmck exceptional-conditions): module macros
+
+MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.macros.scm
+MMCK_EXCEPTIONAL_CONDITIONS_RUNTIME_OBJECTS	+= lib/mmck.exceptional-conditions.macros.$(OBJEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SOURCES	+= lib/mmck.exceptional-conditions.macros.import.scm
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_DEPS		+= lib/mmck.exceptional-conditions.macros.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SHARED_LIBS	+= lib/mmck.exceptional-conditions.macros.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_TEMP_FILES		+= \
+	lib/mmck.exceptional-conditions.macros.temp	\
+	lib/mmck.exceptional-conditions.macros.lock	\
+	lib/mmck.exceptional-conditions.macros.stamp
+
+MMCK_EXCEPTIONAL_CONDITIONS_MACROS_DEPS = \
+	lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT)		\
+	lib/mmck.exceptional-conditions.condition-objects.import.$(MMCK_SOEXT)	\
+	lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT)		\
+	$(MMCK_OBJECTS_DEPS)							\
+	\
+	lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT)
+
+lib/mmck.exceptional-conditions.macros.stamp: \
+		lib/mmck.exceptional-conditions.macros.scm \
+		$(MMCK_EXCEPTIONAL_CONDITIONS_MACROS_DEPS)
+	@rm -f lib/mmck.exceptional-conditions.macros.temp
+	@touch lib/mmck.exceptional-conditions.macros.temp
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_OBJECT_SHARED) lib/mmck.exceptional-conditions.macros.$(OBJEXT) $(<)
+	@$(MV) mmck.exceptional-conditions.macros.import.scm lib/mmck.exceptional-conditions.macros.import.scm
+	@mv -f lib/mmck.exceptional-conditions.macros.temp $@
+
+lib/mmck.exceptional-conditions.macros.import.scm lib/mmck.exceptional-conditions.macros.$(OBJEXT): \
+		lib/mmck.exceptional-conditions.macros.stamp
+	@dry=; for f in x $$MAKEFLAGS; do \
+	  case $$f in \
+	    *=*|--*);; \
+	    *n*) dry=:;; \
+	  esac; \
+	done; \
+	if test -f $@; then :; else \
+	  $$dry trap 'rm -rf lib/mmck.exceptional-conditions.macros.lock lib/mmck.exceptional-conditions.macros.stamp' 1 2 13 15; \
+	  if $$dry mkdir lib/mmck.exceptional-conditions.macros.lock 2>/dev/null; then \
+	    $$dry rm -f lib/mmck.exceptional-conditions.macros.stamp; \
+	    $(MAKE) $(AM_MAKEFLAGS) lib/mmck.exceptional-conditions.macros.stamp; \
+	    $$dry rmdir lib/mmck.exceptional-conditions.macros.lock; \
+	  else \
+	    while test -d lib/mmck.exceptional-conditions.macros.lock && test -z "$$dry"; do \
+	      sleep 1; \
+	    done; \
+	    $$dry test -f lib/mmck.exceptional-conditions.macros.stamp; exit $$?; \
+	  fi; \
+	fi
+
+lib/mmck.exceptional-conditions.macros.import.$(MMCK_SOEXT): lib/mmck.exceptional-conditions.macros.import.scm
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
+
+
 #### library (mmck exceptional-conditions): main module
 
 MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.scm
@@ -454,6 +509,30 @@ tests/test-exception-handlers.$(OBJEXT): tests/test-exception-handlers.scm $(MMC
 	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
 
 tests/test-exception-handlers.exe: tests/test-exception-handlers.$(OBJEXT)
+	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
+
+## --------------------------------------------------------------------
+
+EXTRA_DIST		+= tests/test-unwind-protection.scm
+MMCK_CHECK_OBJECTS	+= tests/test-unwind-protection.$(OBJEXT)
+MMCK_CHECK_PROGS	+= tests/test-unwind-protection.exe
+
+tests/test-unwind-protection.$(OBJEXT): tests/test-unwind-protection.scm $(MMCK_CHECK_DEPS)
+	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
+
+tests/test-unwind-protection.exe: tests/test-unwind-protection.$(OBJEXT)
+	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
+
+## --------------------------------------------------------------------
+
+EXTRA_DIST		+= tests/test-returnable.scm
+MMCK_CHECK_OBJECTS	+= tests/test-returnable.$(OBJEXT)
+MMCK_CHECK_PROGS	+= tests/test-returnable.exe
+
+tests/test-returnable.$(OBJEXT): tests/test-returnable.scm $(MMCK_CHECK_DEPS)
+	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
+
+tests/test-returnable.exe: tests/test-returnable.$(OBJEXT)
 	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
 
 ## --------------------------------------------------------------------

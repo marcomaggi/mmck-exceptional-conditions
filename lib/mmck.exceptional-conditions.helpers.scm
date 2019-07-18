@@ -32,6 +32,7 @@
 
 (module (mmck.exceptional-conditions.helpers)
     ((syntax: define-syntax-rule)
+     (syntax: define*)
      (syntax: case-define)
      (syntax: receive-and-return apply values call-with-values)
      (syntax: begin0)
@@ -53,6 +54,7 @@
 		pretty-print
 		pretty-print-width))
   (reexport (only (chicken base)
+		  call/cc
 		  case-lambda
 		  current-error-port
 		  define-record
@@ -145,6 +147,23 @@
 	 ?form0
        (begin ?form1 ?form ...)))
     ))
+
+(define-syntax define*
+  (ir-macro-transformer
+    (lambda (input-form.stx inject compare)
+      (match input-form.stx
+	((_ (?who . ?formals) ?body0 ?body* ...)
+	 (let ((%__who__ (inject '__who__)))
+	   `(define (,?who . ,?formals)
+	      (let ((,%__who__ (quote ,?who)))
+		,?body0 ,@?body*))))
+
+	((_ ?who ?expr)
+	 (let ((%__who__ (inject '__who__)))
+	   `(define ,?who
+	      (let ((,%__who__ (quote ,?who)))
+		,?expr))))
+	))))
 
 
 ;;;; list processing

@@ -57,6 +57,8 @@
      &syntax make-syntax-violation syntax-violation?
      &undefined make-undefined-violation undefined-violation?
      ;;
+     &non-reinstatable make-non-reinstatable-violation non-reinstatable-violation?
+     ;;
      condition
      condition?
      simple-conditions
@@ -429,6 +431,14 @@
     &violation
   make-undefined-violation
   undefined-violation?)
+
+
+;;;; more exceptional-condition object-types
+
+(define-condition-type &non-reinstatable
+    &violation
+  make-non-reinstatable-violation
+  non-reinstatable-violation?)
 
 
 ;;;; raising special exceptions

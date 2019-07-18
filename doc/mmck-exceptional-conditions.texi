@@ -146,6 +146,7 @@ included in the section entitled ``@gnu{} Free Documentation License''.
 * version::                     Version functions.
 * conditions::                  Exceptional-condition objects.
 * exceptions::                  Handling exceptional-conditions.
+* syntaxes::                    Syntactic extensions.
 
 Appendices
 
@@ -287,7 +288,8 @@ situation to be described in multiple ways.
 
 @menu
 * conditions objects::          Condition objects.
-* conditions types::            Predefined condition types.
+* conditions types r6rs::       Predefined condition types compatible with @rnrs{6}.
+* conditions types ext::        Extended predefined condition types.
 @end menu
 
 @c page
@@ -461,8 +463,8 @@ Some usage examples:
 @end lisp
 
 @c page
-@node conditions types
-@section Predefined condition types
+@node conditions types r6rs
+@section Predefined condition types compatible with @rnrs{6}
 
 
 Hierarchy of predefined condition types:
@@ -503,11 +505,11 @@ Hierarchy of predefined condition types:
 @deffnx Function condition-message @var{condition}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &message &condition
   make-message-condition message-condition?
   (message condition-message))
-@end example
+@end lisp
 
 It carries a message further describing the nature of the condition to
 humans.
@@ -520,10 +522,10 @@ humans.
 @deffnx Function warning? @var{obj}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &warning &condition
   make-warning warning?)
-@end example
+@end lisp
 
 This type describes conditions that do not, in principle, prohibit
 immediate continued execution of the program, but may interfere with the
@@ -537,10 +539,10 @@ program's execution later.
 @deffnx Function serious-condition? @var{obj}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &serious &condition
   make-serious-condition serious-condition?)
-@end example
+@end lisp
 
 This type describes conditions serious enough that they cannot safely be
 ignored.  This condition type is primarily intended as a supertype of
@@ -554,10 +556,10 @@ other condition types.
 @deffnx Function error? @var{obj}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &error &serious
   make-error error?)
-@end example
+@end lisp
 
 This type describes errors, typically caused by something that has gone
 wrong in the interaction of the program with the external world or the
@@ -571,10 +573,10 @@ user.
 @deffnx Function violation? @var{obj}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &violation &serious
   make-violation violation?)
-@end example
+@end lisp
 
 This type describes violations of the language standard or a library
 standard, typically caused by a programming error.
@@ -587,10 +589,10 @@ standard, typically caused by a programming error.
 @deffnx Function assertion-violation? @var{obj}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &assertion &violation
   make-assertion-violation assertion-violation?)
-@end example
+@end lisp
 
 This type describes an invalid call to a procedure, either passing an
 invalid number of arguments, or passing an argument of the wrong type.
@@ -604,11 +606,11 @@ invalid number of arguments, or passing an argument of the wrong type.
 @deffnx Function condition-irritants @var{condition}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &irritants &condition
   make-irritants-condition irritants-condition?
   (irritants condition-irritants))
-@end example
+@end lisp
 
 @var{irritants} should be a list of objects.  This condition provides
 additional information about a condition, typically the argument list of
@@ -624,11 +626,11 @@ created by the procedures @func{error} and @func{assertion-violation}.
 @deffnx Function condition-who @var{condition}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &who &condition
   make-who-condition who-condition?
   (who condition-who))
-@end example
+@end lisp
 
 @var{who} should be a symbol or string identifying the entity reporting the exception.  Conditions
 of this type are created by the @func{error} and @func{assertion-violation} procedures, and the
@@ -642,11 +644,11 @@ of this type are created by the @func{error} and @func{assertion-violation} proc
 @deffnx Function non-continuable-violation? @var{obj}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &non-continuable &violation
   make-non-continuable-violation
   non-continuable-violation?)
-@end example
+@end lisp
 
 This type indicates that an exception handler invoked via @func{raise}
 has returned.
@@ -659,12 +661,12 @@ has returned.
 @deffnx Function implementation-restriction-violation? @var{obj}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &implementation-restriction
     &violation
   make-implementation-restriction-violation
   implementation-restriction-violation?)
-@end example
+@end lisp
 
 This type describes a violation of an implementation restriction allowed
 by the specification, such as the absence of representations for NaNs
@@ -678,10 +680,10 @@ and infinities.
 @deffnx Function lexical-violation? @var{obj}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &lexical &violation
   make-lexical-violation lexical-violation?)
-@end example
+@end lisp
 
 This type describes syntax violations at the level of the datum syntax.
 @end deffn
@@ -695,12 +697,12 @@ This type describes syntax violations at the level of the datum syntax.
 @deffnx Function syntax-violation-subform @var{condition}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &syntax &violation
   make-syntax-violation syntax-violation?
   (form syntax-violation-form)
   (subform syntax-violation-subform))
-@end example
+@end lisp
 
 This type describes syntax violations.  @var{form} should be the
 erroneous syntax object or a datum representing the code of the
@@ -717,13 +719,52 @@ information.
 @deffnx Function undefined-violation? @var{obj}
 This condition type could be defined by:
 
-@example
+@lisp
 (define-condition-type &undefined &violation
   make-undefined-violation undefined-violation?)
-@end example
+@end lisp
 
 This type describes unbound identifiers in the program.
 @end deffn
+
+@c page
+@node conditions types ext
+@section Extended predefined condition types
+
+
+@subsubheading Non--reinstatable condition objects
+
+
+@anchor{&non-reinstatable}
+@deftp {Condition Kind} @acondition{non-reinstatable}
+Condition object type representing an attempt to reinstate a continuation in an invalid context.
+This condition type could be defined by:
+
+@lisp
+(define-condition-type &non-reinstatable
+    &violation
+  make-non-reinstatable-violation
+  non-reinstatable-violation?)
+@end lisp
+@end deftp
+
+
+@defun make-non-reinstatable-violation
+Build and return a new condition object of type @condition{non-reinstatable}.
+@end defun
+
+
+@defun non-reinstatable-violation? @var{obj}
+Return @true{} if @var{obj} is a condition object of type @condition{non-reinstatable}; otherwise
+return @false{}.
+@end defun
+
+
+@defun non-reinstatable-violation @var{who} @var{message} @var{irritant} @dots{}
+Raise a compound condition object with components: @condition{message}, @condition{irritants},
+@condition{non-reinstatable}.  In addition, if @var{who} is not @false{}: the raised condition
+object has a component @condition{who}.
+@end defun
 
 @c page
 @node exceptions
@@ -1112,6 +1153,82 @@ them and convert them:
                  (make-irritants-condition '(1 2 3))))))))))
 @result{} #t
 @end lisp
+
+@c page
+@node syntaxes
+@chapter Syntactic extensions
+
+
+@menu
+* syntaxes returnable::         Early return from code blocks.
+* syntaxes unwind::             Unwind protection.
+@end menu
+
+@c page
+@node syntaxes returnable
+@section Early return from code blocks
+
+
+The standardised Scheme languages do not define the common @syntax{return} keyword present in many
+languages, like C and Python.  Despite this, it is quite easy to obtain the ``early return''
+functionality through the use of continuations:
+
+@example
+(call/cc
+    (lambda (return)
+      (display 'before)
+      (return 1)
+      (display 'never)))
+@print{} before
+@result{} 1
+@end example
+
+Many programmers are used to the @syntax{return} keyword, so @value{PACKAGE} includes some syntaxes
+to support it.  The use of all these syntaxes involves the creation of a continuation, which is a
+performance penalty.
+
+
+@deffn Syntax return @qvar{expr} @dots{}
+This syntax is meant to be used to return from some enclosing block, returning the given optional
+arguments.  Being a fluid syntax: it is possible to rebind this keyword in custom syntaxes.
+@end deffn
+
+
+@deffn Syntax returnable @qvaro{body} @qvar{body} @dots{}
+Like @func{begin}, but allow the use of the keyword @func{return} to return values to the enclosing
+continuation.
+@end deffn
+
+
+Usage examples:
+
+@lisp
+(returnable
+  (display 'before)
+  (return)
+  (display 'never))
+@print{} before
+
+(returnable
+  (display 'before)
+  (return 1)
+  (display 'never))
+@print{} before
+@result{} 1
+
+(returnable
+  (display 'before)
+  (return 1 2)
+  (display 'never))
+@print{} before
+@result{} 1 2
+@end lisp
+
+@c page
+@node syntaxes unwind
+@section Unwind protection
+
+
 
 
 @c page

@@ -37,7 +37,8 @@
      with-exception-handler
      error
      assertion-violation
-     (syntax: assert error))
+     (syntax: assert error)
+     non-reinstatable-violation)
   (import (scheme)
 	  (only (chicken format)
 		format)
@@ -274,6 +275,24 @@
      (or ?expr
 	 (assertion-violation 'assert "failed assertion" (quote ?expr))))
     ))
+
+
+;;;; raising specific exceptions
+
+(define (non-reinstatable-violation who message . irritants)
+  (unless (who-condition-value? who)
+    (assertion-violation 'non-reinstatable-exception "invalid argument WHO" who))
+  (unless (message-condition-value? message)
+    (assertion-violation 'non-reinstatable-exception "invalid argument MESSAGE" message))
+  (raise
+   (if who
+       (condition (make-non-reinstatable-violation)
+		  (make-who-condition		who)
+		  (make-message-condition	message)
+		  (make-irritants-condition	irritants))
+     (condition (make-non-reinstatable-violation)
+		(make-message-condition		message)
+		(make-irritants-condition	irritants)))))
 
 
 ;;;; done
