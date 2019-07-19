@@ -48,6 +48,10 @@
 	      raise-continuable
 	      run-unwind-protection-cleanup-upon-exit?
 	      with-exception-handler)
+     (syntax: with-blocked-exceptions
+	      call/cc
+	      with-exception-handler
+	      call-with-values)
      unwinding-call/cc
      mmck-return-handler)
   (import (scheme)
@@ -643,6 +647,39 @@
 ;;;; syntax GUARD: let's go
 
 (main input-form.stx))))
+
+
+;;;; syntax WITH-BLOCKED-EXCEPTIONS
+
+(define-syntax with-blocked-exceptions
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+      (define %call/cc			(rename 'call/cc))
+      (define %with-exception-handler	(rename 'with-exception-handler))
+      (define %call-with-values		(rename 'call-with-values))
+      (define %lambda			(rename 'lambda))
+
+      (match input-form.stx
+	((_ ?exception-retvals-maker ?thunk)
+	 `(,%call/cc
+	   (,%lambda (reinstate-with-blocked-exceptions-continuation)
+		     (,%with-exception-handler
+		      (,%lambda (E)
+			   (,%call-with-values
+			    (,%lambda ()
+				 (,?exception-retvals-maker E))
+			    reinstate-with-blocked-exceptions-continuation))
+		      ,?thunk))))
+
+	((_ ?thunk)
+	 `(,%call/cc
+	   (,%lambda (reinstate-with-blocked-exceptions-continuation)
+		(,%with-exception-handler
+		 reinstate-with-blocked-exceptions-continuation
+		 ,?thunk))))
+
+	(_
+	 (syntax-error 'with-blocked-exceptions "invalid syntax in macro use"))))))
 
 
 ;;;; done

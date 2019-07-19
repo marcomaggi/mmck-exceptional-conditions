@@ -2477,6 +2477,38 @@ Usage examples:
 @section Blocking exceptions
 
 
+Sometimes we want to block raised exceptions, for example when we are already handling a previously
+raised exception.
+
+
+@deffn Syntax with-blocked-exceptions @meta{thunk}
+@deffnx Syntax with-blocked-exceptions @meta{exception-retvals-maker} @meta{thunk}
+Evaluate @meta{thunk} and return its return values.
+
+When used with one argument: if @meta{thunk} raises an exception, return the raised object.
+
+When used with two arguments: if @meta{thunk} raises an exception, apply the procedure
+@meta{exception-retvals-maker} to the raised object and return its return values.  Exceptions raised
+by @meta{exception-retvals-maker} are @strong{not} blocked.
+@end deffn
+
+
+Usage examples:
+
+@lisp
+(with-blocked-exceptions
+  (lambda ()
+    (raise 99)))
+@result{} 99
+
+(with-blocked-exceptions
+    (lambda (E)
+      (values E 1 2 3))
+  (lambda ()
+    (raise 99)))
+@result{} 99 1 2 3
+@end lisp
+
 @c page
 @c ------------------------------------------------------------
 @c Appendices.

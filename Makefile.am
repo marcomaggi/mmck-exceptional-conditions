@@ -549,6 +549,18 @@ tests/test-guard.exe: tests/test-guard.$(OBJEXT)
 
 ## --------------------------------------------------------------------
 
+EXTRA_DIST		+= tests/test-misc-macros.scm
+MMCK_CHECK_OBJECTS	+= tests/test-misc-macros.$(OBJEXT)
+MMCK_CHECK_PROGS	+= tests/test-misc-macros.exe
+
+tests/test-misc-macros.$(OBJEXT): tests/test-misc-macros.scm $(MMCK_CHECK_DEPS)
+	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
+
+tests/test-misc-macros.exe: tests/test-misc-macros.$(OBJEXT)
+	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
+
+## --------------------------------------------------------------------
+
 EXTRA_DIST		+= tests/test-demo.scm
 MMCK_CHECK_OBJECTS	+= tests/test-demo.$(OBJEXT)
 MMCK_CHECK_PROGS	+= tests/test-demo.exe
