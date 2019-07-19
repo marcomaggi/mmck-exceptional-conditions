@@ -55,6 +55,9 @@
      (syntax: with-current-dynamic-environment
 	      call/cc
 	      call-with-values)
+     (syntax: try
+	      <condition>-predicate
+	      not)
      unwinding-call/cc
      mmck-return-handler)
   (import (scheme)
@@ -715,6 +718,144 @@
 					  reinstate-thunk-call-continuation)))))))))))))
 	(_
 	 (syntax-error 'with-current-dynamic-environment "invalid syntax in macro use"))))))
+
+
+;;;; syntax TRY
+
+(define-syntax try
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+
+
+;;;; syntax TRY:helpers
+
+(define (synner message . args)
+  (apply syntax-error 'try message input-form.stx args))
+
+(define (check-variable var-id)
+  (unless (syntactic-identifier? var-id)
+    (synner "expected identifier as variable" var-id)))
+
+(define (syntactic-identifier? obj)
+  (symbol? obj))
+
+
+;;;; syntax TRY: syntactic identifiers needed in the output form
+
+(define %lambda				(rename 'lambda))
+(define %guard				(rename 'guard))
+(define %with-unwind-handler		(rename 'with-unwind-handler))
+
+(define %<condition>-predicate		(rename '<condition>-predicate))
+
+(define %and				(rename 'and))
+(define %or				(rename 'or))
+(define %xor				(rename 'xor))
+(define %not				(rename 'not))
+
+
+;;;; syntax TRY: parsing input form
+
+(define (main input-form.stx)
+  (match input-form.stx
+    ;;Full syntax.
+    ((_ ?body ('catch ?var ?catch-clause0 ?catch-clause* ...) ('finally ?finally-body0 ?finally-body* ...))
+     (begin
+       (check-variable ?var)
+       (let ((GUARD-CLAUSE* (parse-multiple-catch-clauses ?var (cons ?catch-clause0 ?catch-clause*)))
+	     (why           (gensym)))
+	 `(,%with-unwind-handler
+	   (,%lambda (,why)
+		,?finally-body0 . ,?finally-body*)
+	   (,%lambda ()
+		(,%guard (,?var . ,GUARD-CLAUSE*)
+			 ,?body))))))
+
+    ;;Only catch, no finally.
+    ((_ ?body ('catch ?var ?catch-clause0 ?catch-clause* ...))
+     (begin
+       (check-variable ?var)
+       (let ((GUARD-CLAUSE* (parse-multiple-catch-clauses ?var (cons ?catch-clause0 ?catch-clause*))))
+	 `(,%guard (,?var . ,GUARD-CLAUSE*) ,?body))))
+
+    ((_ ?body ('finally ?finally-body0 ?finally-body* ...))
+     (let ((why (gensym)))
+       `(,%with-unwind-handler
+	 (,%lambda (,why)
+	      ,?finally-body0 . ,?finally-body*)
+	 (,%lambda ()
+	      ,?body))))
+
+    (_
+     (synner "invalid syntax in macro use"))))
+
+(define (parse-multiple-catch-clauses var-id clauses-stx)
+  (match clauses-stx
+    ;;Match when there is no ELSE clause.  Remember that GUARD will reraise the exception when there
+    ;;is no ELSE clause.
+    (()
+     '())
+
+    ;;This branch with  the ELSE clause must come first!!!   The ELSE clause is valid only  if it is
+    ;;the last.
+    ((('else ?else-body0 ?else-body ...))
+     clauses-stx)
+
+    (((?pred ?tag-body0 ?tag-body* ...) . ?other-clauses)
+     (cons (cons* (match ?pred
+		    (((? syntactic-identifier? ?tag))
+		     `((,%<condition>-predicate ,?tag) ,var-id))
+		    (_
+		     (parse-logic-predicate-syntax ?pred
+						   (lambda (tag-id)
+						     (match tag-id
+						       ((? syntactic-identifier? ?tag)
+							`((,%<condition>-predicate ,?tag) ,var-id))
+						       (else
+							(synner "expected identifier as condition kind" tag-id)))))))
+		  ?tag-body0 ?tag-body*)
+	   (parse-multiple-catch-clauses var-id ?other-clauses)))
+
+    ((?clause . ?other-clauses)
+     (synner "invalid catch clause in try syntax" ?clause))))
+
+(case-define parse-logic-predicate-syntax
+  ;;Given a syntax object STX parse it as logic predicate expression with expected format:
+  ;;
+  ;;   STX = (and ?expr0 ?expr ...)
+  ;;       | (or  ?expr0 ?expr ...)
+  ;;       | (xor ?expr0 ?expr ...)
+  ;;       | (not ?expr)
+  ;;       | ?expr
+  ;;
+  ;;where AND,  OR, XOR,  NOT matched by  symbol name.  If  a standalone  ?EXPR is found:  apply the
+  ;;procedure TAIL-PROC  to it gather  its single return value;  TAIL-PROC defaults to  the identity
+  ;;function.
+  ;;
+  ;;Return a syntax object representing the logic predicate with the standalone expressions replaced
+  ;;by the return values of TAIL-PROC.
+  ;;
+  ((stx)
+   (parse-logic-predicate-syntax stx (lambda (stx) stx)))
+  ((stx tail-proc)
+   (define (recurse expr)
+     (parse-logic-predicate-syntax expr tail-proc))
+   (match stx
+     (('and ?expr0 ?expr* ...)
+      `(,%and ,@(map recurse (cons ?expr0 ?expr*))))
+     (('or  ?expr0 ?expr* ...)
+      `(,%or  ,@(map recurse (cons ?expr0 ?expr*))))
+     (('xor ?expr0 ?expr* ...)
+      `(,%xor ,@(map recurse (cons ?expr0 ?expr*))))
+     (('not ?expr)
+      `(,%not ,(recurse ?expr)))
+     (else
+      (tail-proc stx)))))
+
+
+;;;; syntax TRY: let's go
+
+(main input-form.stx))))
 
 
 ;;;; done

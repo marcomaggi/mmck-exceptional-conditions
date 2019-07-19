@@ -2473,6 +2473,245 @@ Usage examples:
 @section The @syntax{try} syntax
 
 
+We can use syntax @syntax{try} to handle raised exceptions in addition to the syntaxes
+@func{with-exception-handler} and @func{guard}; the syntax is basically a wrapper for @func{guard},
+but with the limitation that the raised object @strong{must} be a condition object defined with
+@syntax{define-condition-object}.
+
+
+@deffn Syntax try @qvar{body} @qvar{catch-clauses}
+@deffnx Syntax try @qvar{body} @qvar{catch-clauses} @qvar{finally-clause}
+@deffnx Syntax try @qvar{body} @qvar{finally-clause}
+@deffnx {Auxiliary Syntax} catch
+@deffnx {Auxiliary Syntax} finally
+@deffnx {Auxiliary Syntax} else
+Evaluate the form @qvar{body} and return its results.  If no exceptions are raised by @qvar{body}:
+before returning evaluate the @qvar{finally-clause}.  If an exception is raised by @qvar{body}:
+handle it with the @qvar{catch-clauses} and, before returning, evaluate the @qvar{finally-clause}.
+
+The auxiliary syntaxes @syntax{catch}, @syntax{finally} and @syntax{else} are matched with their
+symbol name.
+
+The @qvar{catch-clauses} argument must have the format:
+
+@example
+(catch @qvar{var} @qvaro{catch-clause} @qvar{catch-clause} ...)
+@end example
+
+@noindent
+where @qvar{var} must be an identifier and every @qvar{catch-clause} has one of the forms:
+
+@example
+(@qvar{pred} @qvaro{tag-body} @qvar{tag-body} ...)
+(else @qvaro{else-body} @qvar{else-body} ...)
+@end example
+
+@noindent
+where the optional @clause{else} clause must appear only once as last one.  The @qvar{pred} argument
+must have one of the following recursive formats:
+
+@example
+@qvar{pred} = (@qvar{tag})
+      | (and @qvaro{inner-pred} @qvar{inner-pred} ...)
+      | (or  @qvaro{inner-pred} @qvar{inner-pred} ...)
+      | (xor @qvaro{inner-pred} @qvar{inner-pred} ...)
+      | (not @qvar{inner-pred})
+
+@qvar{inner-pred} = @qvar{tag}
+            | (and @qvaro{inner-pred} @qvar{inner-pred} ...)
+            | (or  @qvaro{inner-pred} @qvar{inner-pred} ...)
+            | (xor @qvaro{inner-pred} @qvar{inner-pred} ...)
+            | (not @qvar{inner-pred})
+@end example
+
+@noindent
+where: @qvar{tag} is a condition object type identifier; the auxiliary syntaxes @syntax{and},
+@syntax{or}, @syntax{xor}, @syntax{not} are matches by their symbol name.
+
+The @qvar{finally-clause} must have the format:
+
+@example
+(finally @qvaro{finally-body} @qvar{finally-body} ...)
+@end example
+
+@noindent
+when the @clause{finally} clause is present: the @qvar{body} is wrapped into an unwind--protection
+syntax, @xref{syntaxes unwind, Unwind protection}.
+
+The following expansions take place:
+
+@itemize
+@item
+No else, no finally.
+
+@example
+(try
+   @qvar{body}
+  (catch @qvar{var}
+    ((@qvar{tag})
+     @qvaro{tag-body}
+     @qvar{tag-body}
+     ...)
+    ...))
+@expansion{} (guard (@qvar{var}
+              ((is-a? @qvar{var})
+               @qvaro{tag-body}
+               @qvar{tag-body}
+               ...)
+              ...)
+      @qvar{body})
+@end example
+
+@item
+Else, no finally.
+
+@example
+(try
+   @qvar{body}
+  (catch @qvar{var}
+    ((@qvar{tag})
+     @qvaro{tag-body}
+     @qvar{tag-body}
+     ...)
+    ...)
+    (else
+     @qvaro{else-body}
+     @qvar{else-body}
+     ...))
+@expansion{} (guard (@qvar{var}
+              ((is-a? @qvar{var} @qvaro{tag})
+               @qvaro{tag-body}
+               @qvar{tag-body}
+               ...)
+               ...
+              (else
+               @qvaro{else-body}
+               @qvar{else-body}
+               ...))
+      @qvar{body})
+@end example
+
+@item
+Finally, no else.
+
+@example
+(try
+   @qvar{body}
+  (catch @qvar{var}
+    ((@qvar{tag})
+     @qvaro{tag-body}
+     @qvar{tag-body}
+     ...)
+    ...)
+  (finally
+    @qvaro{finally-body}
+    @qvar{finally-body}
+    ...))
+@expansion{} (with-unwind-protection
+        (lambda (dummy)
+          @qvaro{finally-body}
+          @qvar{finally-body}
+          ...)
+      (lambda ()
+        (guard (@qvar{var}
+                ((is-a? @qvar{var} @qvaro{tag})
+                 @qvaro{tag-body}
+                 @qvar{tag-body}
+                 ...)
+                ...)
+            @qvar{body})))
+@end example
+
+@item
+Finally, no catch.
+
+@example
+(try
+    @qvar{body}
+  (finally
+    @qvaro{finally-body}
+    @qvar{finally-body}
+    ...))
+@expansion{} (with-unwind-protection
+        (lambda (dummy)
+          @qvaro{finally-body}
+          @qvar{finally-body}
+          ...)
+      (lambda ()
+        @qvar{body}))
+@end example
+@end itemize
+@end deffn
+
+
+Some usage examples without the @clause{finally} clause:
+
+@example
+(define-condition-type &this
+    &error
+  make-this-condition
+  condition-this?
+  (a condition-this.a)
+  (b condition-this.b)
+  (c condition-this.c))
+
+(define (doit thunk)
+  (try
+      (thunk)
+    (catch E
+      ((&this)
+       (list (condition-this.a E)
+             (condition-this.b E)
+             (condition-this.c E)))
+      ((&message)
+       (condition-message E))
+      (else E))))
+
+(doit (lambda ()
+        (raise (make-this-condition 1 2 3))))
+@result{} (1 2 3)
+
+(doit (lambda ()
+        (raise (make-message-condition "ciao"))))
+@result{} "ciao"
+
+(doit (lambda ()
+        (raise 123)))
+@result{} 123
+@end example
+
+Evaluation order tracking for @clause{finally} clauses:
+
+@lisp
+(import (only (mmck checks)
+              with-result
+              add-result))
+
+(with-result
+  (try
+      (add-result 'body)
+    (catch E
+      ((&error)   (add-result 'catch-error))
+      ((&warning) (add-result 'catch-warning))
+      (else       (add-result 'catch-else)))
+    (finally
+     (add-result 'finally))))
+@result{} (body (body finally))
+
+(with-result
+  (try
+      (begin
+        (add-result 'body)
+        (raise (make-warning)))
+    (catch E
+      ((&error)   (add-result 'catch-error))
+      ((&warning) (add-result 'catch-warning))
+      (else       (add-result 'catch-else)))
+    (finally
+     (add-result 'finally))))
+@result{} (catch-warning (body catch-warning finally))
+@end lisp
+
 @c page
 @node syntaxes blocking
 @section Blocking exceptions
@@ -2509,7 +2748,6 @@ Usage examples:
     (raise 99)))
 @result{} 99 1 2 3
 @end lisp
-
 
 @c page
 @node syntaxes dynenv

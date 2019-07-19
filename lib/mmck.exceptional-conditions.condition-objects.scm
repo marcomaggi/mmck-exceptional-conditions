@@ -63,10 +63,14 @@
      condition?
      simple-conditions
      condition-kinds
+
+     ;; private exports
      ;;
      who-condition-value?
      message-condition-value?
-     irritants-condition-value?)
+     irritants-condition-value?
+     ;;
+     <condition>-predicate)
   (import (scheme)
 	  (prefix (only (chicken base)
 			error

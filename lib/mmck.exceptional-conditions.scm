@@ -39,7 +39,30 @@
     ()
   (import (only (chicken module) reexport))
   (reexport (mmck.exceptional-conditions.handlers))
-  (reexport (mmck.exceptional-conditions.condition-objects))
+  (reexport (only (mmck.exceptional-conditions.condition-objects)
+		  define-condition-type
+		  ;; the following are defined by R6RS
+		  &condition condition?
+		  &who make-who-condition who-condition? condition-who
+		  &message make-message-condition message-condition? condition-message
+		  &irritants make-irritants-condition irritants-condition? condition-irritants
+		  &warning make-warning warning?
+		  &serious make-serious-condition serious-condition?
+		  &error make-error error?
+		  &violation &serious make-violation violation?
+		  &assertion &serious make-assertion-violation assertion-violation?
+		  &non-continuable make-non-continuable-violation non-continuable-violation?
+		  &implementation-restriction make-implementation-restriction-violation implementation-restriction-violation?
+		  &lexical make-lexical-violation lexical-violation?
+		  &syntax make-syntax-violation syntax-violation?
+		  &undefined make-undefined-violation undefined-violation?
+		  ;;
+		  &non-reinstatable make-non-reinstatable-violation non-reinstatable-violation?
+		  ;;
+		  condition
+		  condition?
+		  simple-conditions
+		  condition-kinds))
   (reexport (mmck.exceptional-conditions.macros))
   (reexport (mmck.exceptional-conditions.version))
   #| end of module |# )
