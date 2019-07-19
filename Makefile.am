@@ -302,6 +302,61 @@ lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT): lib/mmck.exceptio
 	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
 
 
+#### library (mmck exceptional-conditions): module compensations
+
+MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.compensations.scm
+MMCK_EXCEPTIONAL_CONDITIONS_RUNTIME_OBJECTS	+= lib/mmck.exceptional-conditions.compensations.$(OBJEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SOURCES	+= lib/mmck.exceptional-conditions.compensations.import.scm
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_DEPS		+= lib/mmck.exceptional-conditions.compensations.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SHARED_LIBS	+= lib/mmck.exceptional-conditions.compensations.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_TEMP_FILES		+= \
+	lib/mmck.exceptional-conditions.compensations.temp	\
+	lib/mmck.exceptional-conditions.compensations.lock	\
+	lib/mmck.exceptional-conditions.compensations.stamp
+
+MMCK_EXCEPTIONAL_CONDITIONS_COMPENSATIONS_DEPS = \
+	lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT)		\
+	lib/mmck.exceptional-conditions.condition-objects.import.$(MMCK_SOEXT)	\
+	lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT)		\
+	$(MMCK_OBJECTS_DEPS)							\
+	\
+	lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT)
+
+lib/mmck.exceptional-conditions.compensations.stamp: \
+		lib/mmck.exceptional-conditions.compensations.scm \
+		$(MMCK_EXCEPTIONAL_CONDITIONS_COMPENSATIONS_DEPS)
+	@rm -f lib/mmck.exceptional-conditions.compensations.temp
+	@touch lib/mmck.exceptional-conditions.compensations.temp
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_OBJECT_SHARED) lib/mmck.exceptional-conditions.compensations.$(OBJEXT) $(<)
+	@$(MV) mmck.exceptional-conditions.compensations.import.scm lib/mmck.exceptional-conditions.compensations.import.scm
+	@mv -f lib/mmck.exceptional-conditions.compensations.temp $@
+
+lib/mmck.exceptional-conditions.compensations.import.scm lib/mmck.exceptional-conditions.compensations.$(OBJEXT): \
+		lib/mmck.exceptional-conditions.compensations.stamp
+	@dry=; for f in x $$MAKEFLAGS; do \
+	  case $$f in \
+	    *=*|--*);; \
+	    *n*) dry=:;; \
+	  esac; \
+	done; \
+	if test -f $@; then :; else \
+	  $$dry trap 'rm -rf lib/mmck.exceptional-conditions.compensations.lock lib/mmck.exceptional-conditions.compensations.stamp' 1 2 13 15; \
+	  if $$dry mkdir lib/mmck.exceptional-conditions.compensations.lock 2>/dev/null; then \
+	    $$dry rm -f lib/mmck.exceptional-conditions.compensations.stamp; \
+	    $(MAKE) $(AM_MAKEFLAGS) lib/mmck.exceptional-conditions.compensations.stamp; \
+	    $$dry rmdir lib/mmck.exceptional-conditions.compensations.lock; \
+	  else \
+	    while test -d lib/mmck.exceptional-conditions.compensations.lock && test -z "$$dry"; do \
+	      sleep 1; \
+	    done; \
+	    $$dry test -f lib/mmck.exceptional-conditions.compensations.stamp; exit $$?; \
+	  fi; \
+	fi
+
+lib/mmck.exceptional-conditions.compensations.import.$(MMCK_SOEXT): lib/mmck.exceptional-conditions.compensations.import.scm
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
+
+
 #### library (mmck exceptional-conditions): module macros
 
 MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.macros.scm
@@ -318,6 +373,7 @@ MMCK_EXCEPTIONAL_CONDITIONS_MACROS_DEPS = \
 	lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT)		\
 	lib/mmck.exceptional-conditions.condition-objects.import.$(MMCK_SOEXT)	\
 	lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT)		\
+	lib/mmck.exceptional-conditions.compensations.import.$(MMCK_SOEXT)	\
 	$(MMCK_OBJECTS_DEPS)							\
 	\
 	lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT)
@@ -557,6 +613,18 @@ tests/test-try.$(OBJEXT): tests/test-try.scm $(MMCK_CHECK_DEPS)
 	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
 
 tests/test-try.exe: tests/test-try.$(OBJEXT)
+	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
+
+## --------------------------------------------------------------------
+
+EXTRA_DIST		+= tests/test-compensations.scm
+MMCK_CHECK_OBJECTS	+= tests/test-compensations.$(OBJEXT)
+MMCK_CHECK_PROGS	+= tests/test-compensations.exe
+
+tests/test-compensations.$(OBJEXT): tests/test-compensations.scm $(MMCK_CHECK_DEPS)
+	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
+
+tests/test-compensations.exe: tests/test-compensations.$(OBJEXT)
 	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
 
 ## --------------------------------------------------------------------

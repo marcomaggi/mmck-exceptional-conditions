@@ -147,6 +147,7 @@ included in the section entitled ``@gnu{} Free Documentation License''.
 * conditions::                  Exceptional-condition objects.
 * exceptions::                  Handling exceptional-conditions.
 * syntaxes::                    Syntactic extensions.
+* compensations::               Compensation stacks.
 
 Appendices
 
@@ -1165,7 +1166,6 @@ them and convert them:
 @menu
 * syntaxes returnable::         Early return from code blocks.
 * syntaxes unwind::             Unwind protection.
-* syntaxes compensations::      Compensation stacks.
 * syntaxes try::                The @syntax{try} syntax.
 * syntaxes blocking::           Blocking exceptions.
 * syntaxes dynenv::             Capturing the current dynamic environment.
@@ -1246,7 +1246,7 @@ To understand the unwind--protection mechanism we must understand the concepts `
 function call'' and ``dynamic environment'' as defined by the Scheme standard.
 
 The unwind--protection mechanism described here is used by @value{PACKAGE} in: the implementation of
-compensations (@pxref{syntaxes compensations}); the implementation of the syntax @syntax{try}
+compensations (@pxref{compensations}); the implementation of the syntax @syntax{try}
 (@pxref{syntaxes try}).
 
 @quotation
@@ -2465,10 +2465,6 @@ Usage examples:
 @end lisp
 
 @c page
-@node syntaxes compensations
-@section Compensation stacks
-
-@c page
 @node syntaxes try
 @section The @syntax{try} syntax
 
@@ -2815,6 +2811,275 @@ Usage examples:
      calling-thunk-1 (inside-thunk inner) raise-exception
      calling-thunk-2 (inside-thunk inner) raise-exception))
 @end example
+
+@c page
+@node compensations
+@chapter Compensation stacks
+
+
+@cindex Compensation stacks
+@cindex Stacks of compensation thunks
+@cindex Releasing asynchronous resources
+@cindex Asynchronous resources, releasing
+
+
+Compensation stacks allow us to write code to allocate resources near the code that releases them;
+compensation stacks are described in:
+
+@quotation
+Westley Weimer, George C. Necula.  ``Finding and Preventing Run--Time Error Handling Mistakes''.  In
+Proceedings of the @acronym{acm} Conference on Object--Oriented Programming, Systems, Languages, and
+Applications, 2004.
+@end quotation
+
+@value{PACKAGE} implements compensation stacks on top of the unwind protection mechanism, which
+allows operations to be performed synchronously with respect to the dynamic extent of a call to
+thunk; @ref{syntaxes unwind, Unwind protection}.
+
+@menu
+* compensations usage::         Basic compensations usage.
+* compensations api::           Compensations @api{}.
+@end menu
+
+@c page
+@node compensations usage
+@section Basic compensations usage
+
+
+A @dfn{compensation} is a chunk of code that undoes a resource allocation performed in another
+chunk, example:
+
+@lisp
+(define port
+  (open-input-port "/tmp/proof.1"))
+@end lisp
+
+@noindent
+must be ``compensated'' by:
+
+@lisp
+(close-input-port port)
+@end lisp
+
+@noindent
+with the compensations stack such code can be written:
+
+@lisp
+(with-compensations
+  (letrec
+      ((port (compensate
+                 (open-input-port "/tmp/proof.1")
+               (with
+                 (close-input-port port)))))
+    (make-use-of port)))
+@end lisp
+
+@noindent
+or:
+
+@lisp
+(with-compensations
+  (define port
+    (compensate
+        (open-input-port "/tmp/proof.1")
+      (with
+        (close-input-port port))))
+  (make-use-of port))
+@end lisp
+
+Compensation forms are embedded in a closure and pushed on a stack, so that, in case of error, it is
+possible to evaluate them in allocation--reversed order.
+
+A form that makes use of a compensation stack looks like this:
+
+@lisp
+(with-compensations
+  (compensate
+      ALLOC-FORMS-1
+    (with RELEASE-FORMS-1))
+  (compensate
+      ALLOC-FORMS-2
+    (with RELEASE-FORMS-2))
+  BODY-FORMS)
+@end lisp
+
+@noindent
+both @func{with-compensations} and @func{compensate} are syntaxes.  If no error occurs the order of
+evaluation is:
+
+@lisp
+ALLOC-FORMS-1
+ALLOC-FORMS-2
+BODY-FORMS
+RELEASE-FORMS-2
+RELEASE-FORMS-1
+@end lisp
+
+@noindent
+if an error occurs in @code{BODY-FORMS}, the order of evaluation is:
+
+@lisp
+ALLOC-FORMS-1
+ALLOC-FORMS-2
+BODY-FORMS
+RELEASE-FORMS-2
+RELEASE-FORMS-1
+@end lisp
+
+@noindent
+if an error occurs in @code{ALLOC-FORMS-2}, the order of evaluation is:
+
+@lisp
+ALLOC-FORMS-1
+ALLOC-FORMS-2
+RELEASE-FORMS-1
+@end lisp
+
+@noindent
+if an error occurs in @code{ALLOC-FORMS-1}, the order of evaluation is:
+
+@lisp
+ALLOC-FORMS-1
+@end lisp
+
+@noindent
+if an error occurs in @code{RELEASE-FORMS-1}, the order of evaluation is:
+
+@lisp
+ALLOC-FORMS-1
+ALLOC-FORMS-2
+BODY-FORMS
+RELEASE-FORMS-2
+RELEASE-FORMS-1
+@end lisp
+
+@noindent
+if an error occurs in @code{RELEASE-FORMS-2}, the order of evaluation is:
+
+@lisp
+ALLOC-FORMS-1
+ALLOC-FORMS-2
+BODY-FORMS
+RELEASE-FORMS-2
+RELEASE-FORMS-1
+@end lisp
+
+So @syntax{with-compensations} tries to evaluate all the release forms, despite errors.  Of course
+if an error occurs in the middle of a set of forms:
+
+@lisp
+(first-form)   ;evaluated
+(raise 'here)
+(third-form)   ;not evaluated
+@end lisp
+
+@noindent
+the forms before the error are evaluated, while the forms after the error are not.
+
+A variant of @syntax{with-compensations} exists to evaluate the compensation forms only in case of
+error:
+
+@lisp
+(with-compensations/on-error
+  (compensate
+      ALLOC-FORMS-1
+    (with RELEASE-FORMS-1))
+  (compensate
+      ALLOC-FORMS-2
+    (with RELEASE-FORMS-2))
+  BODY-FORMS)
+@end lisp
+
+@noindent
+if no error occurs the order of evaluation is:
+
+@lisp
+ALLOC-FORMS-1
+ALLOC-FORMS-2
+BODY-FORMS
+@end lisp
+
+@noindent
+while if an error occurs the evaluation is equal to the cases of @syntax{with-compensations}.  The
+``on error'' variant is useful in constructors and initialisation functions, where we want to run
+the compensations only if an error occurs; if no error is raised, we just want the constructor to
+return.
+
+@c page
+@node compensations api
+@section Compensations @api{}
+
+
+The compensations mechanism is built on top of the unwind protection mechanism:
+
+@itemize
+@item
+All the @qvar{alloc} and @qvar{body} forms end in the body of a thunk; the compensations are
+evaluated when the dynamic extent of the call to such thunk is terminated, as defined by the unwind
+protection mechanism.
+
+@item
+All the @qvar{release} forms end in the body of a clean--up procedure; such forms are evaluated in
+the @strong{dynamic environment of the syntax use that allocates the compensations stack}.
+@end itemize
+
+
+@deffn Syntax with-compensations @qvaro{body} @qvar{body} @dots{}
+Allocate a new compensations stack, then evaluate all the @qvar{body} forms in the given order.  If
+no error occurs: call @func{run-compensations}, reset the compensations stack to empty, finally
+return the result values of the last @qvar{body} form.
+
+If the dynamic extent of the evaluation of the @qvar{body} forms is terminated: the accumulated
+compensations are evaluated in reverse order.
+@end deffn
+
+
+@deffn Syntax with-compensations/on-error @qvaro{body} @qvar{body} @dots{}
+Allocate a new compensations stack, then evaluate all the @qvar{body} forms in the given order.  If
+no error occurs: reset the compensations stack to empty, return the result values of the last
+@qvar{body} form.
+
+If the dynamic extent of the evaluation of the @qvar{body} forms is terminated by escaping from the
+body directly or by escaping from the body while handling a raised a exception: the accumulated
+compensations are evaluated in reverse order.
+@end deffn
+
+
+@defun run-compensations
+Evaluate all the compensation thunks in the current stack, in last in/first out order; compensation
+thunks are called in the current dynamic environment.  If a compensation thunk raises an exception:
+the exception is blocked and silently discarded.
+
+This function should be called only inside the dynamic environment prepared by
+@syntax{with-compensations} and similar syntaxes.  It can be called multiple times: every time the
+compensation thunks are consumed and removed from the stack.
+@end defun
+
+
+@deffn Syntax with-compensation-handler @qvar{release-thunk} @qvar{alloc-thunk}
+First push @qvar{release-thunk} on the current compensations stack, @strong{then} evaluate
+@qvar{alloc-thunk}.  Return the results of evaluating @qvar{alloc-thunk}.
+@end deffn
+
+
+@deffn Syntax compensate @qvaro{alloc} @qvar{alloc} @dots{} (with @qvaro{release} @qvar{release} @dots{})
+@deffnx {Auxiliary Syntax} with
+First evaluate all the @qvar{alloc} expressions then, @strong{only} if they perform a normal return:
+push one thunk holding all the @qvar{release} forms on the current compensations stack.  Return the
+result of the last @qvar{alloc} expression.
+
+The auxiliary syntax @syntax{with} is matches with its symbol name.
+@end deffn
+
+
+@deffn Syntax push-compensation @qvaro{release} @qvar{release} @dots{}
+Push a thunk holding the @qvar{release} forms on the current compensations stack.
+@end deffn
+
+
+@defun push-compensation-thunk @var{thunk}
+Push the given thunk on the current compensations stack.
+@end defun
 
 @c page
 @c ------------------------------------------------------------

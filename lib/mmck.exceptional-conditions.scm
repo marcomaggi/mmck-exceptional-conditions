@@ -32,6 +32,7 @@
 	 (uses mmck.exceptional-conditions.version)
 	 (uses mmck.exceptional-conditions.condition-objects)
 	 (uses mmck.exceptional-conditions.handlers)
+	 (uses mmck.exceptional-conditions.compensations)
 	 (uses mmck.exceptional-conditions.macros)
 	 (emit-import-library mmck.exceptional-conditions))
 
@@ -63,6 +64,9 @@
 		  condition?
 		  simple-conditions
 		  condition-kinds))
+  (reexport (only (mmck.exceptional-conditions.compensations)
+		  run-compensations
+		  push-compensation-thunk))
   (reexport (mmck.exceptional-conditions.macros))
   (reexport (mmck.exceptional-conditions.version))
   #| end of module |# )

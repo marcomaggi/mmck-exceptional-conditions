@@ -53,6 +53,7 @@
 	 (uses mmck.exceptional-conditions.helpers)
 	 (uses mmck.exceptional-conditions.condition-objects)
 	 (uses mmck.exceptional-conditions.handlers)
+	 (uses mmck.exceptional-conditions.compensations)
 	 (emit-import-library mmck.exceptional-conditions.macros))
 
 (module (mmck.exceptional-conditions.macros)
@@ -82,12 +83,29 @@
      (syntax: try
 	      <condition>-predicate
 	      not)
+     (syntax: with-compensations/on-error
+	      eq?
+	      cons
+	      run-compensations-store
+	      compensations)
+     (syntax: with-compensations
+	      eq?
+	      cons
+	      run-compensations-store
+	      compensations)
+     (syntax: push-compensation
+	      push-compensation-thunk)
+     (syntax: with-compensation-handler
+	      push-compensation-thunk)
+     (syntax: compensate)
+     ;;
      unwinding-call/cc
      mmck-return-handler)
   (import (scheme)
 	  (mmck exceptional-conditions helpers)
 	  (mmck exceptional-conditions condition-objects)
-	  (mmck exceptional-conditions handlers))
+	  (mmck exceptional-conditions handlers)
+	  (mmck exceptional-conditions compensations))
   (import-for-syntax (scheme)
 		     (only (chicken base)
 			   define-record)
@@ -578,6 +596,12 @@
 (define %run-unwind-protection-cleanup-upon-exit?	(rename 'run-unwind-protection-cleanup-upon-exit?))
 (define %with-exception-handler				(rename 'with-exception-handler))
 
+;;; --------------------------------------------------------------------
+
+(define %else				(rename 'else))
+(define (is-else? obj)
+  (compare obj %else))
+
 
 ;;;; syntax GUARD: parsing input form
 
@@ -654,7 +678,7 @@
 		 (,%raise-continuable raised-obj))))
 
     ;;There is an ELSE clause: no need to jump back to the exception handler introduced by GUARD.
-    ((('else ?else-body ?else-body* ...))
+    ((((? is-else?) ?else-body ?else-body* ...))
      `(,%begin
        (run-unwind-protect-cleanups)
        ,?else-body . ,?else-body*))
@@ -800,6 +824,12 @@
 (define %xor				(rename 'xor))
 (define %not				(rename 'not))
 
+;;; --------------------------------------------------------------------
+
+(define %else				(rename 'else))
+(define (is-else? obj)
+  (compare obj %else))
+
 
 ;;;; syntax TRY: parsing input form
 
@@ -845,7 +875,7 @@
 
     ;;This branch with  the ELSE clause must come first!!!   The ELSE clause is valid only  if it is
     ;;the last.
-    ((('else ?else-body0 ?else-body ...))
+    ((((? is-else?) ?else-body0 ?else-body ...))
      clauses-stx)
 
     (((?pred ?tag-body0 ?tag-body* ...) . ?other-clauses)
@@ -858,7 +888,7 @@
 						     (match tag-id
 						       ((? syntactic-identifier? ?tag)
 							`((,%<condition>-predicate ,?tag) ,var-id))
-						       (else
+						       (_
 							(synner "expected identifier as condition kind" tag-id)))))))
 		  ?tag-body0 ?tag-body*)
 	   (parse-multiple-catch-clauses var-id ?other-clauses)))
@@ -896,13 +926,185 @@
       `(,%xor ,@(map recurse (cons ?expr0 ?expr*))))
      (('not ?expr)
       `(,%not ,(recurse ?expr)))
-     (else
+     (_
       (tail-proc stx)))))
 
 
 ;;;; syntax TRY: let's go
 
 (main input-form.stx))))
+
+
+;;;; compensations
+
+(define-syntax with-compensations/on-error
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+      (define (synner message . args)
+	(apply syntax-error 'with-compensations/on-error message input-form.stx args))
+
+      (define %case-lambda		(rename 'case-lambda))
+      (define %let			(rename 'let))
+      (define %lambda			(rename 'lambda))
+      (define %parameterize		(rename 'parameterize))
+      (define %with-unwind-handler	(rename 'with-unwind-handler))
+      (define %when			(rename 'when))
+      (define %if			(rename 'if))
+      (define %set!			(rename 'set!))
+      (define %compensations		(rename 'compensations))
+      (define %cons			(rename 'cons))
+      (define %eq?			(rename 'eq?))
+      (define %run-compensations-store	(rename 'run-compensations-store))
+
+      (define (%make-store-binding store)
+	(let ((stack        (gensym))
+	      (false/thunk  (gensym)))
+	  `((,store (,%let ((,stack '()))
+			   (,%case-lambda
+			    (()
+			     ,stack)
+			    ((,false/thunk)
+			     (,%if ,false/thunk
+				   (,%set! ,stack (,%cons ,false/thunk ,stack))
+				   (,%set! ,stack '())))))))))
+
+      (match input-form.stx
+	((_ ?body0 ?body* ...)
+	 (let ((store (gensym))
+	       (why   (gensym)))
+	   `(,%let ,(%make-store-binding store)
+		   (,%parameterize ((,%compensations ,store))
+				   (,%with-unwind-handler
+				    (,%lambda (,why)
+					 (,%when (,%eq? ,why 'exception)
+						 (,%run-compensations-store ,store)))
+				    (,%lambda ()
+					 ,?body0 . ,?body*))))))
+	(_
+	 (synner "invalid syntax in macro use"))))))
+
+;;; --------------------------------------------------------------------
+
+(define-syntax with-compensations
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+      (define (synner message . args)
+	(apply syntax-error 'with-compensations message input-form.stx args))
+
+      (define %case-lambda		(rename 'case-lambda))
+      (define %let			(rename 'let))
+      (define %lambda			(rename 'lambda))
+      (define %parameterize		(rename 'parameterize))
+      (define %with-unwind-handler	(rename 'with-unwind-handler))
+      (define %if			(rename 'if))
+      (define %set!			(rename 'set!))
+      (define %compensations		(rename 'compensations))
+      (define %cons			(rename 'cons))
+      (define %eq?			(rename 'eq?))
+      (define %run-compensations-store	(rename 'run-compensations-store))
+
+      (define (%make-store-binding store)
+	(let ((stack        (gensym))
+	      (false/thunk  (gensym)))
+	  `((,store (,%let ((,stack '()))
+			   (,%case-lambda
+			    (()
+			     ,stack)
+			    ((,false/thunk)
+			     (,%if ,false/thunk
+				   (,%set! ,stack (,%cons ,false/thunk ,stack))
+				   (,%set! ,stack '())))))))))
+
+      (match input-form.stx
+	((_ ?body0 ?body* ...)
+	 (let ((store (gensym))
+	       (why   (gensym)))
+	   `(,%let ,(%make-store-binding store)
+		   (,%parameterize ((,%compensations ,store))
+				   (,%with-unwind-handler
+				    (,%lambda (,why)
+					 (,%run-compensations-store ,store))
+				    (,%lambda ()
+					 ,?body0 . ,?body*))))))
+	(_
+	 (synner "invalid syntax in macro use"))))))
+
+;;; --------------------------------------------------------------------
+
+(define-syntax push-compensation
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+      (define (synner message . args)
+	(apply syntax-error 'push-compensations message input-form.stx args))
+
+      (define %lambda			(rename 'lambda))
+      (define %push-compensation-thunk	(rename 'push-compensation-thunk))
+
+      (match input-form.stx
+	((_ ?release0 ?release* ...)
+	 `(,%push-compensation-thunk (,%lambda () ,?release0 ,@?release*)))
+
+	(_
+	 (synner "invalid syntax in macro use"))))))
+
+;;; --------------------------------------------------------------------
+
+(define-syntax with-compensation-handler
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+      (define (synner message . args)
+	(apply syntax-error 'with-compensation-handler message input-form.stx args))
+
+      (define %begin			(rename 'begin))
+      (define %push-compensation-thunk	(rename 'push-compensation-thunk))
+
+      (match input-form.stx
+	((_ ?release-thunk ?alloc-thunk)
+	 `(,%begin
+	    (,%push-compensation-thunk ,?release-thunk)
+	    (,?alloc-thunk)))
+	(_
+	 (synner "invalid syntax in macro use"))))))
+
+;;; --------------------------------------------------------------------
+
+(define-syntax compensate
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+      (define (synner message . args)
+	(apply syntax-error 'compensate message input-form.stx args))
+
+      (define %push-compensation	(rename 'push-compensation))
+      (define %receive-and-return	(rename 'receive-and-return))
+      (define %begin			(rename 'begin))
+
+      (match input-form.stx
+	((_ ?alloc0 ?form* ...)
+	 (let ((free #f))
+	   (define alloc*
+	     (let recur ((form-stx ?form*))
+	       (match form-stx
+		 ((('with ?release0 ?release* ...))
+		  (begin
+		    (set! free `(,%push-compensation ,?release0 ,@?release*))
+		    '()))
+
+		 (()
+		  (synner "invalid compensation syntax: missing WITH keyword" form-stx))
+
+		 ((('with))
+		  (synner "invalid compensation syntax: empty WITH keyword"))
+
+		 ((?alloc ?form* ...)
+		  (cons ?alloc (recur ?form*)))
+		 )))
+	   (let ((the-obj (gensym)))
+	     `(,%receive-and-return (,the-obj)
+				    (,%begin ,?alloc0 . ,alloc*)
+				    ,free))))
+
+	(_
+	 (synner "invalid syntax in macro use"))))))
 
 
 ;;;; done

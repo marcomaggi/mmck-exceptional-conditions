@@ -46,7 +46,8 @@
      exists
      for-all
      fold-left
-     fold-right)
+     fold-right
+     for-each-in-order)
   (import (scheme)
 	  (only (chicken module)
 		reexport)
@@ -214,6 +215,11 @@
 	   (for-all pred (cdr ell1) (cdr ell2))
 	 #f)
      #t)))
+
+(define (for-each-in-order func ell)
+  (unless (null? ell)
+    (func (car ell))
+    (for-each-in-order func (cdr ell))))
 
 
 ;;;; miscellaneous
