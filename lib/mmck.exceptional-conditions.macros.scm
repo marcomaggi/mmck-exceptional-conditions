@@ -52,6 +52,9 @@
 	      call/cc
 	      with-exception-handler
 	      call-with-values)
+     (syntax: with-current-dynamic-environment
+	      call/cc
+	      call-with-values)
      unwinding-call/cc
      mmck-return-handler)
   (import (scheme)
@@ -680,6 +683,38 @@
 
 	(_
 	 (syntax-error 'with-blocked-exceptions "invalid syntax in macro use"))))))
+
+
+;;;; syntax WITH-CURRENT-DYNAMIC-ENVIRONMENT
+
+(define-syntax with-current-dynamic-environment
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+      (define %call/cc			(rename 'call/cc))
+      (define %with-blocked-exceptions	(rename 'with-blocked-exceptions))
+      (define %call-with-values		(rename 'call-with-values))
+      (define %lambda			(rename 'lambda))
+
+      (match input-form.stx
+	((_ ?exception-retvals-maker ?thunk)
+	 `(,%call/cc
+	   (,%lambda (return-thunk-with-packed-environment)
+		((,%call/cc
+		  (,%lambda (reinstate-target-environment-continuation)
+		       (return-thunk-with-packed-environment
+			(,%lambda ()
+			     (,%call/cc
+			      (,%lambda (reinstate-thunk-call-continuation)
+				   (reinstate-target-environment-continuation
+				    (,%lambda ()
+					 (,%call-with-values
+					  (,%lambda ()
+					       (,%with-blocked-exceptions
+						,?exception-retvals-maker
+						,?thunk))
+					  reinstate-thunk-call-continuation)))))))))))))
+	(_
+	 (syntax-error 'with-current-dynamic-environment "invalid syntax in macro use"))))))
 
 
 ;;;; done

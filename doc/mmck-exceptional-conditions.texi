@@ -1168,6 +1168,7 @@ them and convert them:
 * syntaxes compensations::      Compensation stacks.
 * syntaxes try::                The @syntax{try} syntax.
 * syntaxes blocking::           Blocking exceptions.
+* syntaxes dynenv::             Capturing the current dynamic environment.
 @end menu
 
 @c page
@@ -2508,6 +2509,74 @@ Usage examples:
     (raise 99)))
 @result{} 99 1 2 3
 @end lisp
+
+
+@c page
+@node syntaxes dynenv
+@section Capturing the current dynamic environment
+
+
+@deffn Syntax with-current-dynamic-environment @qvar{exception-retvals-maker} @qvar{thunk}
+Build and return a thunk that, wherever it is called, evaluates @qvar{thunk} in the dynamic
+environment of the macro use and returns its return values.  If @qvar{thunk} raises an exception:
+apply the procedure @qvar{exception-retvals-maker} to the raised object and return its return
+values.
+
+Exceptions raised by @qvar{exception-retvals-maker} are @strong{not} blocked.
+@end deffn
+
+
+Usage examples:
+
+@example
+(import (only (vicare checks)
+              with-result
+              add-result))
+
+(define parm
+  (make-parameter #f))
+
+(with-result
+  (parameterise ((parm 'outer))
+    (let* ((counter 0)
+           (thunk   (parameterise ((parm 'inner))
+                      (with-current-dynamic-environment
+                          values
+                        (lambda ()
+                          (set! counter (+ 1 counter))
+                          (add-result (list 'inside-thunk (parm))))))))
+      (add-result (parm))
+      (add-result 'calling-thunk-1)
+      (thunk)
+      (add-result 'calling-thunk-2)
+      (thunk)
+      counter)))
+@result{} (2 (outer
+       calling-thunk-1 (inside-thunk inner)
+       calling-thunk-2 (inside-thunk inner)))
+
+(with-result
+  (parameterise ((parm 'outer))
+    (let* ((counter 0)
+           (thunk   (parameterise ((parm 'inner))
+                      (with-current-dynamic-environment
+                          values
+                        (lambda ()
+                          (set! counter (+ 1 counter))
+                          (add-result (list 'inside-thunk (parm)))
+                          (add-result 'raise-exception)
+                          (raise 123))))))
+      (add-result (parm))
+      (add-result 'calling-thunk-1)
+      (let ((A (thunk)))
+        (add-result 'calling-thunk-2)
+        (let ((B (thunk)))
+          (values A B counter))))))
+@result{} (123 123 2
+    (outer
+     calling-thunk-1 (inside-thunk inner) raise-exception
+     calling-thunk-2 (inside-thunk inner) raise-exception))
+@end example
 
 @c page
 @c ------------------------------------------------------------

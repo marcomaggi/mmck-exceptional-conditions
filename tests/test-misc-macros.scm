@@ -84,6 +84,58 @@
   (values))
 
 
+(parameterise ((check-test-name		'with-current-dynamic-environment))
+
+  (define parm
+    (make-parameter #f))
+
+  (check
+      (with-result
+	(parameterise ((parm 'outer))
+	  (let* ((counter 0)
+		 (thunk   (parameterise ((parm 'inner))
+			    (with-current-dynamic-environment
+				values
+			      (lambda ()
+				(set! counter (+ 1 counter))
+				(add-result (list 'inside-thunk (parm))))))))
+	    (add-result (parm))
+	    (add-result 'calling-thunk-1)
+	    (thunk)
+	    (add-result 'calling-thunk-2)
+	    (thunk)
+	    counter)))
+    => '(2 (outer
+	    calling-thunk-1 (inside-thunk inner)
+	    calling-thunk-2 (inside-thunk inner))))
+
+  (check	;raising exception
+      (with-result
+	(parameterise ((parm 'outer))
+	  (let* ((counter 0)
+		 (thunk   (parameterise ((parm 'inner))
+			    (with-current-dynamic-environment
+				values
+			      (lambda ()
+				(set! counter (+ 1 counter))
+				(add-result (list 'inside-thunk (parm)))
+				(add-result 'raise-exception)
+				(raise 123))))))
+	    (add-result (parm))
+	    (add-result 'calling-thunk-1)
+	    (let ((A (thunk)))
+	      (add-result 'calling-thunk-2)
+	      (let ((B (thunk)))
+		(values A B counter))))))
+    => '(123 123 2
+	     (outer
+	      calling-thunk-1 (inside-thunk inner) raise-exception
+	      calling-thunk-2 (inside-thunk inner) raise-exception)))
+
+
+  (values))
+
+
 ;;;; done
 
 (check-report)
