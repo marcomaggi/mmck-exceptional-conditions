@@ -53,7 +53,9 @@
 	 (uses mmck.exceptional-conditions.helpers)
 	 (uses mmck.exceptional-conditions.condition-objects)
 	 (uses mmck.exceptional-conditions.handlers)
+	 (uses mmck.exceptional-conditions.unwind-protection)
 	 (uses mmck.exceptional-conditions.compensations)
+	 (uses mmck.exceptional-conditions.coroutines)
 	 (emit-import-library mmck.exceptional-conditions.macros))
 
 (module (mmck.exceptional-conditions.macros)
@@ -61,6 +63,7 @@
 	      mmck-return-handler)
      (syntax: returnable
 	      unwinding-call/cc mmck-return-handler)
+     ;;
      (syntax: with-unwind-handler
 	      dynamic-wind
 	      non-reinstatable-violation
@@ -68,21 +71,26 @@
 	      call/cc
 	      with-exception-handler)
      (syntax: unwind-protect)
+     ;;
      (syntax: guard
 	      call/cc
 	      raise-continuable
 	      run-unwind-protection-cleanup-upon-exit?
 	      with-exception-handler)
+     ;;
      (syntax: with-blocked-exceptions
 	      call/cc
 	      with-exception-handler
 	      call-with-values)
+     ;;
      (syntax: with-current-dynamic-environment
 	      call/cc
 	      call-with-values)
+     ;;
      (syntax: try
 	      <condition>-predicate
 	      not)
+     ;;
      (syntax: with-compensations/on-error
 	      eq?
 	      cons
@@ -99,13 +107,24 @@
 	      push-compensation-thunk)
      (syntax: compensate)
      ;;
-     unwinding-call/cc
+     (syntax: concurrently
+	      +
+	      coroutine
+	      finish-coroutines
+	      zero?)
+     (syntax: monitor
+	      do-monitor)
+     ;;
      mmck-return-handler)
   (import (scheme)
 	  (mmck exceptional-conditions helpers)
 	  (mmck exceptional-conditions condition-objects)
 	  (mmck exceptional-conditions handlers)
-	  (mmck exceptional-conditions compensations))
+	  (mmck exceptional-conditions compensations)
+	  (mmck exceptional-conditions unwind-protection)
+	  (mmck exceptional-conditions coroutines)
+	  (prefix (chicken plist)
+		  chicken::))
   (import-for-syntax (scheme)
 		     (only (chicken base)
 			   define-record)
@@ -173,62 +192,6 @@
 				     ,?body0 . ,?body*))))
 	(_
 	 (syntax-error 'returnable "invalid syntax in macro use"))))))
-
-
-;;;; unwind protection infrastructure
-
-(define run-unwind-protection-cleanup-upon-exit?
-  ;;This is used in the interaction between the unwind-protection mechanism and the GUARD syntax.
-  ;;
-  (make-parameter #f))
-
-(define* (unwinding-call/cc receiver)
-  ;;Performing a raw escape from an exception handler skips calling the unwind handlers installed in
-  ;;the  body; this  problem can  be  solved by  using  UNWINDING-CALL/CC rather  than the  standard
-  ;;CALL/CC.
-  ;;
-  ;;Similar  to CALL/CC,  but calling  the  escape procedure  causes  the invocation  of the  unwind
-  ;;handlers installed in the dynamic environment up until the saved continuation is restored.
-  ;;
-  ;;There are limitations:
-  ;;
-  ;;* The escape procedure produced by this primitive  *must* be called only from the dynamic extent
-  ;;of the call to  RECEIVER.  For example: generating an unwinding escape  procedure in a coroutine
-  ;;and calling it from another coroutine leads to raising an exception of type "&non-reinstatable".
-  ;;
-  ;;* The escape procedure produced by this primitive *must* be called only once; an attempt to call
-  ;;it a second time leads to raising an exception of type "&non-reinstatable".
-  ;;
-  ;;NOTE After some development  iterations, the implementation of this primitive  has taken a shape
-  ;;quite   similar   to    the   function   CALL/CC-ESCAPING   proposed   by    Will   Clinger   in
-  ;;<http://www.ccs.neu.edu/home/will/UWESC/uwesc.sch>.
-  ;;
-  (let ((inside-dynamic-extent-of-receiver-call? #f)
-	(escape-procedure-already-called-once?   #f))
-    (dynamic-wind
-	(lambda ()
-	  (set! inside-dynamic-extent-of-receiver-call? #t))
-	(lambda ()
-	  (begin0
-	      (call/cc
-		  (lambda (escape)
-		    (receiver (lambda retvals
-				(if inside-dynamic-extent-of-receiver-call?
-				    (if escape-procedure-already-called-once?
-					(non-reinstatable-violation __who__
-					  "unwinding escape procedure called for the second time")
-				      (begin
-					;;Yes,  we  must really  set  the  parameter to  the  symbol
-					;;"escape"; this symbol  is used as argument  for the unwind
-					;;handlers.
-					(run-unwind-protection-cleanup-upon-exit? 'escape)
-					(set! escape-procedure-already-called-once? #t)
-					(apply escape retvals)))
-				  (non-reinstatable-violation __who__
-				    "unwinding escape procedure called outside the dynamic extent of its receiver function"))))))
-	    (run-unwind-protection-cleanup-upon-exit? #f)))
-	(lambda ()
-	  (set! inside-dynamic-extent-of-receiver-call? #f)))))
 
 
 ;;;; syntax WITH-UNWIND-HANDLER
@@ -1103,6 +1066,157 @@
 				    (,%begin ,?alloc0 . ,alloc*)
 				    ,free))))
 
+	(_
+	 (synner "invalid syntax in macro use"))))))
+
+
+;;;; syntaxes macro: CONCURRENTLY
+
+(define-syntax concurrently
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+      (define (synner message . args)
+	(apply syntax-error 'concurrently message input-form.stx args))
+
+      (define %begin		(rename 'begin))
+      (define %lambda		(rename 'lambda))
+      (define %let		(rename 'let))
+      (define %set!		(rename 'set!))
+
+      (define %+			(rename '+))
+      (define %coroutine		(rename 'coroutine))
+      (define %finish-coroutines	(rename 'finish-coroutines))
+      (define %zero?			(rename 'zero?))
+
+      (match input-form.stx
+	((_ ?thunk0 ?thunk* ...)
+	 (let ((counter (gensym)))
+	   `(,%let ((,counter 0))
+		   (,%begin
+		    (,%set! ,counter (,%+ +1 ,counter))
+		    (,%coroutine (,%lambda () (,?thunk0) (,%set! ,counter (,%+ -1 ,counter)))))
+		   ,@(map (lambda (thunk)
+			    `(,%begin
+			      (,%set! ,counter (,%+ 1 ,counter))
+			      (,%coroutine (,%lambda () (,thunk)  (,%set! ,counter (,%+ -1 ,counter))))))
+		       ?thunk*)
+		   (,%finish-coroutines (lambda ()
+					  (,%zero? ,counter))))))
+	(_
+	 (synner "invalid syntax in macro use"))))))
+
+
+;;;; syntaxes macro: MONITOR
+;;
+;;The   functions   implementing   the   monitor   should   really   be   in   the   module   "(mmck
+;;exceptional-conditions coroutines)"; but we need UNWIND-PROTECT  in DO-MONITOR, so we put it here.
+;;It's the simplest solution.  (Marco Maggi; Jul 19, 2019)
+;;
+
+(define (get-sem-record key)
+  (chicken::get key 'mmck-coroutine-key #f))
+
+(define (set-sem-record! key val)
+  (chicken::put! key 'mmck-coroutine-key val))
+
+(define-record <sem>
+  concurrent-coroutines-counter
+		;A non-negative exact integer representing the number of coroutines currently inside
+		;the critical section.
+  pending-continuations
+		;Null or  a proper list, representing  a FIFO queue, holding  coroutine continuation
+		;procedures.  Every  time a coroutine is  denied access to the  critial section: its
+		;continuation procedure is appended here.
+  key
+		;A gensym uniquely identifying this monitor.
+  concurrent-coroutines-maximum
+		;A positive  exact integer representing  the maximum  number of coroutines  that are
+		;allowed to concurrently enter the critical section.
+  )
+
+(define sem? <sem>?)
+
+(define (make-sem key concurrent-coroutines-maximum)
+  (or (get-sem-record key)
+      (receive-and-return (sem)
+	  (make-<sem> 0 '() key concurrent-coroutines-maximum)
+	(set-sem-record! key sem))))
+
+(define-syntax-rule (sem-counter-incr! sem)
+  (<sem>-concurrent-coroutines-counter-set! sem (+ +1 (<sem>-concurrent-coroutines-counter sem))))
+
+(define-syntax-rule (sem-counter-decr! sem)
+  (<sem>-concurrent-coroutines-counter-set! sem (+ -1 (<sem>-concurrent-coroutines-counter sem))))
+
+(define (sem-enqueue-pending-continuation! sem reenter)
+  ;;FIXME Should  this list be replaced  by a proper FIFO  queue object?  (Marco Maggi;  Mon Jan 19,
+  ;;2015)
+  ;;
+  (<sem>-pending-continuations-set! sem (append (<sem>-pending-continuations sem)
+						(list reenter))))
+
+(define (sem-dequeue-pending-continuation! sem)
+  (let ((Q (<sem>-pending-continuations sem)))
+    (and (pair? Q)
+	 (receive-and-return (reenter)
+	     (car Q)
+	   (<sem>-pending-continuations-set! sem (cdr Q))))))
+
+(define (sem-acquire sem)
+  (cond ((< (<sem>-concurrent-coroutines-counter sem)
+	    (<sem>-concurrent-coroutines-maximum sem))
+	 ;;The coroutine is allowed entry in the critical section.
+	 (sem-counter-incr! sem))
+	(else
+	 ;;The coroutine is denied entry in the critical section: we have to suspend it.  We enqueue
+	 ;;a  continuation function  in the  queue  of pending  coroutines,  then jump  to the  next
+	 ;;coroutine.
+	 (call/cc
+	     (lambda (reenter)
+	       (sem-enqueue-pending-continuation! sem reenter)
+	       ((dequeue!) (void))))
+	 ;;When the continuation procedure REENTER is called: it will jump back here and return from
+	 ;;this function.
+	 )))
+
+(define (sem-release sem)
+  (sem-counter-decr! sem)
+  (cond ((sem-dequeue-pending-continuation! sem)
+	 => (lambda (escape-func)
+	      (coroutine (lambda ()
+			   ;;We want to apply the escape function to an argument.
+			   (escape-func (void))))))))
+
+(define (do-monitor key concurrent-coroutines-maximum body-thunk)
+  (assert (%concurrent-coroutines-maximum? concurrent-coroutines-maximum))
+  (let ((sem (make-sem key concurrent-coroutines-maximum)))
+    ;;We do *not* want to use DYNAMIC-WIND here!!!
+    (sem-acquire sem)
+    (unwind-protect
+	(body-thunk)
+      (sem-release sem))))
+
+;;; --------------------------------------------------------------------
+
+(define (%concurrent-coroutines-maximum? obj)
+  (and (fixnum?   obj)
+       (positive? obj)))
+
+;;; --------------------------------------------------------------------
+
+(define-syntax monitor
+  (er-macro-transformer
+    (lambda (input-form.stx rename compare)
+      (define (synner message . args)
+	(apply syntax-error 'monitor message input-form.stx args))
+
+      (define %quote		(rename 'quote))
+      (define %do-monitor	(rename 'do-monitor))
+
+      (match input-form.stx
+	((_ ?concurrent-coroutines-maximum ?thunk)
+	 (let ((KEY (gensym)))
+	   `(,%do-monitor (,%quote ,KEY) ,?concurrent-coroutines-maximum ,?thunk)))
 	(_
 	 (synner "invalid syntax in macro use"))))))
 

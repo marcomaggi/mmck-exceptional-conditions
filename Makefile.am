@@ -302,6 +302,61 @@ lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT): lib/mmck.exceptio
 	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
 
 
+#### library (mmck exceptional-conditions): module unwind-protection
+
+MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.unwind-protection.scm
+MMCK_EXCEPTIONAL_CONDITIONS_RUNTIME_OBJECTS	+= lib/mmck.exceptional-conditions.unwind-protection.$(OBJEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SOURCES	+= lib/mmck.exceptional-conditions.unwind-protection.import.scm
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_DEPS		+= lib/mmck.exceptional-conditions.unwind-protection.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SHARED_LIBS	+= lib/mmck.exceptional-conditions.unwind-protection.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_TEMP_FILES		+= \
+	lib/mmck.exceptional-conditions.unwind-protection.temp	\
+	lib/mmck.exceptional-conditions.unwind-protection.lock	\
+	lib/mmck.exceptional-conditions.unwind-protection.stamp
+
+MMCK_EXCEPTIONAL_CONDITIONS_UNWIND_PROTECTION_DEPS = \
+	lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT)		\
+	lib/mmck.exceptional-conditions.condition-objects.import.$(MMCK_SOEXT)	\
+	lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT)		\
+	$(MMCK_OBJECTS_DEPS)							\
+	\
+	lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT)
+
+lib/mmck.exceptional-conditions.unwind-protection.stamp: \
+		lib/mmck.exceptional-conditions.unwind-protection.scm \
+		$(MMCK_EXCEPTIONAL_CONDITIONS_UNWIND_PROTECTION_DEPS)
+	@rm -f lib/mmck.exceptional-conditions.unwind-protection.temp
+	@touch lib/mmck.exceptional-conditions.unwind-protection.temp
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_OBJECT_SHARED) lib/mmck.exceptional-conditions.unwind-protection.$(OBJEXT) $(<)
+	@$(MV) mmck.exceptional-conditions.unwind-protection.import.scm lib/mmck.exceptional-conditions.unwind-protection.import.scm
+	@mv -f lib/mmck.exceptional-conditions.unwind-protection.temp $@
+
+lib/mmck.exceptional-conditions.unwind-protection.import.scm lib/mmck.exceptional-conditions.unwind-protection.$(OBJEXT): \
+		lib/mmck.exceptional-conditions.unwind-protection.stamp
+	@dry=; for f in x $$MAKEFLAGS; do \
+	  case $$f in \
+	    *=*|--*);; \
+	    *n*) dry=:;; \
+	  esac; \
+	done; \
+	if test -f $@; then :; else \
+	  $$dry trap 'rm -rf lib/mmck.exceptional-conditions.unwind-protection.lock lib/mmck.exceptional-conditions.unwind-protection.stamp' 1 2 13 15; \
+	  if $$dry mkdir lib/mmck.exceptional-conditions.unwind-protection.lock 2>/dev/null; then \
+	    $$dry rm -f lib/mmck.exceptional-conditions.unwind-protection.stamp; \
+	    $(MAKE) $(AM_MAKEFLAGS) lib/mmck.exceptional-conditions.unwind-protection.stamp; \
+	    $$dry rmdir lib/mmck.exceptional-conditions.unwind-protection.lock; \
+	  else \
+	    while test -d lib/mmck.exceptional-conditions.unwind-protection.lock && test -z "$$dry"; do \
+	      sleep 1; \
+	    done; \
+	    $$dry test -f lib/mmck.exceptional-conditions.unwind-protection.stamp; exit $$?; \
+	  fi; \
+	fi
+
+lib/mmck.exceptional-conditions.unwind-protection.import.$(MMCK_SOEXT): lib/mmck.exceptional-conditions.unwind-protection.import.scm
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
+
+
 #### library (mmck exceptional-conditions): module compensations
 
 MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.compensations.scm
@@ -357,6 +412,62 @@ lib/mmck.exceptional-conditions.compensations.import.$(MMCK_SOEXT): lib/mmck.exc
 	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
 
 
+#### library (mmck exceptional-conditions): module coroutines
+
+MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.coroutines.scm
+MMCK_EXCEPTIONAL_CONDITIONS_RUNTIME_OBJECTS	+= lib/mmck.exceptional-conditions.coroutines.$(OBJEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SOURCES	+= lib/mmck.exceptional-conditions.coroutines.import.scm
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_DEPS		+= lib/mmck.exceptional-conditions.coroutines.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_IMPORT_SHARED_LIBS	+= lib/mmck.exceptional-conditions.coroutines.import.$(MMCK_SOEXT)
+MMCK_EXCEPTIONAL_CONDITIONS_TEMP_FILES		+= \
+	lib/mmck.exceptional-conditions.coroutines.temp	\
+	lib/mmck.exceptional-conditions.coroutines.lock	\
+	lib/mmck.exceptional-conditions.coroutines.stamp
+
+MMCK_EXCEPTIONAL_CONDITIONS_COROUTINES_DEPS = \
+	lib/mmck.exceptional-conditions.helpers.import.$(MMCK_SOEXT)		\
+	lib/mmck.exceptional-conditions.condition-objects.import.$(MMCK_SOEXT)	\
+	lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT)		\
+	lib/mmck.exceptional-conditions.unwind-protection.import.$(MMCK_SOEXT)	\
+	$(MMCK_OBJECTS_DEPS)							\
+	\
+	lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT)
+
+lib/mmck.exceptional-conditions.coroutines.stamp: \
+		lib/mmck.exceptional-conditions.coroutines.scm \
+		$(MMCK_EXCEPTIONAL_CONDITIONS_COROUTINES_DEPS)
+	@rm -f lib/mmck.exceptional-conditions.coroutines.temp
+	@touch lib/mmck.exceptional-conditions.coroutines.temp
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_OBJECT_SHARED) lib/mmck.exceptional-conditions.coroutines.$(OBJEXT) $(<)
+	@$(MV) mmck.exceptional-conditions.coroutines.import.scm lib/mmck.exceptional-conditions.coroutines.import.scm
+	@mv -f lib/mmck.exceptional-conditions.coroutines.temp $@
+
+lib/mmck.exceptional-conditions.coroutines.import.scm lib/mmck.exceptional-conditions.coroutines.$(OBJEXT): \
+		lib/mmck.exceptional-conditions.coroutines.stamp
+	@dry=; for f in x $$MAKEFLAGS; do \
+	  case $$f in \
+	    *=*|--*);; \
+	    *n*) dry=:;; \
+	  esac; \
+	done; \
+	if test -f $@; then :; else \
+	  $$dry trap 'rm -rf lib/mmck.exceptional-conditions.coroutines.lock lib/mmck.exceptional-conditions.coroutines.stamp' 1 2 13 15; \
+	  if $$dry mkdir lib/mmck.exceptional-conditions.coroutines.lock 2>/dev/null; then \
+	    $$dry rm -f lib/mmck.exceptional-conditions.coroutines.stamp; \
+	    $(MAKE) $(AM_MAKEFLAGS) lib/mmck.exceptional-conditions.coroutines.stamp; \
+	    $$dry rmdir lib/mmck.exceptional-conditions.coroutines.lock; \
+	  else \
+	    while test -d lib/mmck.exceptional-conditions.coroutines.lock && test -z "$$dry"; do \
+	      sleep 1; \
+	    done; \
+	    $$dry test -f lib/mmck.exceptional-conditions.coroutines.stamp; exit $$?; \
+	  fi; \
+	fi
+
+lib/mmck.exceptional-conditions.coroutines.import.$(MMCK_SOEXT): lib/mmck.exceptional-conditions.coroutines.import.scm
+	$(MMCK_LIB_ENV) $(CSC_COMPILE_LIBRARY) $(@) $(<)
+
+
 #### library (mmck exceptional-conditions): module macros
 
 MMCK_EXCEPTIONAL_CONDITIONS_MODULES		+= lib/mmck.exceptional-conditions.macros.scm
@@ -374,6 +485,8 @@ MMCK_EXCEPTIONAL_CONDITIONS_MACROS_DEPS = \
 	lib/mmck.exceptional-conditions.condition-objects.import.$(MMCK_SOEXT)	\
 	lib/mmck.exceptional-conditions.handlers.import.$(MMCK_SOEXT)		\
 	lib/mmck.exceptional-conditions.compensations.import.$(MMCK_SOEXT)	\
+	lib/mmck.exceptional-conditions.unwind-protection.import.$(MMCK_SOEXT)	\
+	lib/mmck.exceptional-conditions.coroutines.import.$(MMCK_SOEXT)		\
 	$(MMCK_OBJECTS_DEPS)							\
 	\
 	lib/mmck.exceptional-conditions.helpers.$(MMCK_SOEXT)
@@ -637,6 +750,18 @@ tests/test-misc-macros.$(OBJEXT): tests/test-misc-macros.scm $(MMCK_CHECK_DEPS)
 	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
 
 tests/test-misc-macros.exe: tests/test-misc-macros.$(OBJEXT)
+	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
+
+## --------------------------------------------------------------------
+
+EXTRA_DIST		+= tests/test-coroutines.scm
+MMCK_CHECK_OBJECTS	+= tests/test-coroutines.$(OBJEXT)
+MMCK_CHECK_PROGS	+= tests/test-coroutines.exe
+
+tests/test-coroutines.$(OBJEXT): tests/test-coroutines.scm $(MMCK_CHECK_DEPS)
+	$(MMCK_CHECK_ENV) $(CSC_COMPILE_OBJECT_STATIC) $(@) $(<)
+
+tests/test-coroutines.exe: tests/test-coroutines.$(OBJEXT)
 	$(MMCK_CHECK_ENV) $(CSC_LINK_PROGRAM) $(@) $(<)
 
 ## --------------------------------------------------------------------

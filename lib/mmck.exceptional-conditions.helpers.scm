@@ -60,10 +60,13 @@
 		  current-error-port
 		  define-record
 		  exit
+		  fixnum?
+		  gensym
 		  make-parameter
 		  parameterize
 		  receive
 		  unless
+		  void
 		  when))
   (import-for-syntax (scheme)
 		     (only (matchable)

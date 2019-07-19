@@ -33,6 +33,7 @@
 	 (uses mmck.exceptional-conditions.condition-objects)
 	 (uses mmck.exceptional-conditions.handlers)
 	 (uses mmck.exceptional-conditions.compensations)
+	 (uses mmck.exceptional-conditions.coroutines)
 	 (uses mmck.exceptional-conditions.macros)
 	 (emit-import-library mmck.exceptional-conditions))
 
@@ -40,6 +41,8 @@
     ()
   (import (only (chicken module) reexport))
   (reexport (mmck.exceptional-conditions.handlers))
+  (reexport (only (mmck.exceptional-conditions.unwind-protection)
+		  unwinding-call/cc))
   (reexport (only (mmck.exceptional-conditions.condition-objects)
 		  define-condition-type
 		  ;; the following are defined by R6RS
@@ -67,6 +70,12 @@
   (reexport (only (mmck.exceptional-conditions.compensations)
 		  run-compensations
 		  push-compensation-thunk))
+  (reexport (only (mmck.exceptional-conditions.coroutines)
+		  coroutine
+		  yield finish-coroutines
+		  current-coroutine-uid coroutine-uid?
+		  suspend-coroutine resume-coroutine suspended-coroutine?
+		  reset-coroutines! dump-coroutines))
   (reexport (mmck.exceptional-conditions.macros))
   (reexport (mmck.exceptional-conditions.version))
   #| end of module |# )
