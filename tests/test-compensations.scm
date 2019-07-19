@@ -30,6 +30,8 @@
   (import (scheme)
 	  (only (chicken base)
 		letrec*)
+	  (only (chicken format)
+		format)
 	  (mmck exceptional-conditions)
 	  (mmck exceptional-conditions helpers)
 	  (mmck checks))
@@ -1123,10 +1125,10 @@
   #f)
 
 
-#;(parameterise ((check-test-name	'coroutines))
+(parameterise ((check-test-name	'coroutines))
 
   (define (print template . args)
-    (apply fprintf (current-error-port) template args)
+    (apply format (current-error-port) template args)
     (yield))
 
 ;;; --------------------------------------------------------------------
