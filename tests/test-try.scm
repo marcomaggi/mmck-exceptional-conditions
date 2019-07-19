@@ -1663,6 +1663,94 @@
   #t)
 
 
+(parameterise ((check-test-name		'logic-predicates))
+
+;;; logic AND
+
+  (check
+      (try
+	  (raise (condition (make-error)
+			    (make-warning)))
+	(catch E
+	  ((and &error &warning)
+	   #t)
+	  (else
+	   #f)))
+    => #t)
+
+;;; --------------------------------------------------------------------
+;;; logic OR
+
+  (check
+      (try
+	  (raise (make-error))
+	(catch E
+	  ((or &error &warning)
+	   #t)
+	  (else
+	   #f)))
+    => #t)
+
+  (check
+      (try
+	  (raise (make-warning))
+	(catch E
+	  ((or &error &warning)
+	   #t)
+	  (else
+	   #f)))
+    => #t)
+
+;;; --------------------------------------------------------------------
+;;; logic XOR
+
+  (check
+      (try
+	  (raise (make-error))
+	(catch E
+	  ((xor &error &warning)
+	   #t)
+	  (else
+	   #f)))
+    => #t)
+
+  (check
+      (try
+	  (raise (make-warning))
+	(catch E
+	  ((xor &error &warning)
+	   #t)
+	  (else
+	   #f)))
+    => #t)
+
+  (check
+      (try
+	  (raise (condition (make-error)
+			    (make-warning)))
+	(catch E
+	  ((xor &error &warning)
+	   #f)
+	  (else
+	   #t)))
+    => #t)
+
+;;; --------------------------------------------------------------------
+;;; logic NOT
+
+  (check
+      (try
+	  (raise (make-warning))
+	(catch E
+	  ((not &syntax)
+	   #t)
+	  (else
+	   #f)))
+    => #t)
+
+  (values))
+
+
 ;;;; done
 
 (check-report)
