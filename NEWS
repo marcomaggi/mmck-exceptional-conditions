@@ -3,6 +3,16 @@
 		      News file for MMCK Template
 		      ===========================
 
+Revision 0.1.0-devel.1
+----------------------
+
+* Fixed documentation about CHICKEN interoperability.
+
+* Added:
+
+     mmck-exceptional-conditions-setup-interoperability
+
+
 Revision 0.1.0-devel.0
 ----------------------
 

@@ -2,7 +2,7 @@
 #
 
 AC_PREREQ([2.69])
-MMUX_PKG_VERSIONS([0],[1],[0],[devel.0])
+MMUX_PKG_VERSIONS([0],[1],[0],[devel.1])
 AC_INIT([MMCK Exceptional Conditions],[MMUX_PACKAGE_VERSION],
   [mrc.mgg@gmail.com],
   [mmck-exceptional-conditions],[http://github.com/marcomaggi/mmck-exceptional-conditions])
