@@ -38,7 +38,8 @@
      error
      assertion-violation
      (syntax: assert error)
-     non-reinstatable-violation)
+     non-reinstatable-violation
+     mmck-exceptional-conditions-setup-interoperability)
   (import (scheme)
 	  (only (chicken format)
 		format)
@@ -257,6 +258,12 @@
      (condition (make-non-reinstatable-violation)
 		(make-message-condition		message)
 		(make-irritants-condition	irritants)))))
+
+
+;;;; interoperability with CHICKEN
+
+(define (mmck-exceptional-conditions-setup-interoperability)
+  (chicken::current-exception-handler raise-continuable))
 
 
 ;;;; done

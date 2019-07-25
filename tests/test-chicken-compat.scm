@@ -45,7 +45,7 @@
 (check-set-mode! 'report-failed)
 (check-display "*** testing CHICKEN compatibility\n")
 
-(chicken::current-exception-handler raise-continuable)
+(mmck-exceptional-conditions-setup-interoperability)
 
 
 (parameterise ((check-test-name		'chicken::with-exception-handler))

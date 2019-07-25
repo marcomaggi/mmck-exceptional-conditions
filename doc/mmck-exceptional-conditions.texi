@@ -790,20 +790,6 @@ are always invoked with an object describing the exceptional situation.  @value{
 system provides a predefined taxonomy of such descriptive objects, as well as a facility for
 extending the taxonomy, @ref{conditions, Exceptional--condition object}.
 
-The facilities described in this section are built upon a custom exception handler that must be
-installed before using any of them.  We can do this in a module with:
-
-@lisp
-(module (mine)
-    ()
-  (import (scheme)
-          (mmck exceptional-condition))
-
-  (current-exception-handler default-exception-handler)
-
-  #| end of module |#)
-@end lisp
-
 @menu
 * exceptions handling::         Exceptions handling.
 * exceptions errors::           Raising errors.
@@ -1082,6 +1068,25 @@ exception handler to @func{raise-continuable} at the top level:
 
   #| end of module |# )
 @end lisp
+
+@noindent
+or more simply:
+
+@lisp
+(module (demo)
+    ()
+  (import (scheme)
+          (mmck exceptional-conditions))
+
+  (mmck-exceptional-conditions-setup-interoperability)
+
+  #| end of module |# )
+@end lisp
+
+
+@defun mmck-exceptional-conditions-setup-interoperability
+Set @func{raise-continuable} as current exception handler in the @chicken{} process.
+@end defun
 
 @c ------------------------------------------------------------------------
 
